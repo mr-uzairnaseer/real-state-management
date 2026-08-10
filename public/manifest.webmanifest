@@ -1,0 +1,17 @@
+{
+  "name": "Estate Progress",
+  "short_name": "Estate",
+  "description": "Real estate & construction progress management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

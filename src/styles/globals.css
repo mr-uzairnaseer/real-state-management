@@ -1,0 +1,227 @@
+/* Twenty-inspired design tokens (twentyhq/twenty) */
+:root {
+  /* Gray scale (approx from Twenty GrayScaleLight) */
+  --gray-1: #ffffff;
+  --gray-2: #fafafa;
+  --gray-3: #f7f7f7;
+  --gray-4: #f1f1f1;
+  --gray-5: #ebebeb;
+  --gray-6: #d6d6d6;
+  --gray-7: #cccccc;
+  --gray-8: #b3b3b3;
+  --gray-9: #999999;
+  --gray-10: #838383;
+  --gray-11: #666666;
+  --gray-12: #333333;
+
+  /* Backgrounds */
+  --bg-primary: var(--gray-1);
+  --bg-secondary: var(--gray-2);
+  --bg-tertiary: var(--gray-4);
+  --bg-quaternary: var(--gray-5);
+  --bg-inverted: var(--gray-12);
+
+  /* Text */
+  --text-primary: var(--gray-12);
+  --text-secondary: var(--gray-11);
+  --text-tertiary: var(--gray-9);
+  --text-light: #ffffff;
+  --text-danger: #e5484d;
+  --text-success: #30a46c;
+  --text-warning: #f5a524;
+
+  /* Borders */
+  --border-color: var(--gray-4);
+  --border-color-strong: var(--gray-6);
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+
+  /* Accents (Twenty indigo / status) */
+  --accent-blue: #3e63dd;
+  --accent-blue-soft: #edf2fe;
+  --accent-green: #30a46c;
+  --accent-green-soft: #e9f9ee;
+  --accent-red: #e5484d;
+  --accent-red-soft: #feebec;
+  --accent-orange: #f76b15;
+  --accent-orange-soft: #fff1e7;
+  --accent-yellow: #f5a524;
+  --accent-yellow-soft: #fff7e8;
+  --accent-purple: #8e4ec6;
+  --accent-purple-soft: #f7edfe;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* Typography — Inter + Geist Mono (Twenty-like sans/mono) */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --topbar-height: 52px;
+
+  /* Shadows (restrained, Twenty-like) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 32px -16px rgba(0, 0, 0, 0.18);
+
+  /* Motion */
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --duration: 150ms;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+img,
+video {
+  max-width: 100%;
+  display: block;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gray-6);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s var(--ease) both;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.2s var(--ease) both;
+}
+
+/* Shared responsive helpers for inline page grids */
+.resp-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.resp-hero {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.resp-3col {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.resp-form-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.resp-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .resp-2col,
+  .resp-hero,
+  .resp-3col,
+  .resp-form-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .resp-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+

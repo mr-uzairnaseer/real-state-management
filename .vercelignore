@@ -1,0 +1,9 @@
+# Local / OS
+.DS_Store
+*.pem
+.env*.local
+.env
+
+# Dev artifacts (Vercel ignores via gitignore mostly; keep deploy lean)
+README.dev.md
+dev.cmd
