@@ -10,6 +10,7 @@ import {
   formatDate,
   formatDateTime,
   statusLabel,
+  clientPayLabel,
 } from '@/lib/calculations';
 import {
   Badge,
@@ -23,17 +24,24 @@ import {
   Textarea,
 } from '@/components/ui';
 import { fileToDataUrl, taskTone, unitTone } from '@/lib/helpers';
-import type { SaleRecord, RentalRecord, BookingRecord, UnitStatus, MediaKind } from '@/lib/types';
+import type { SaleRecord, RentalRecord, BookingRecord, UnitStatus, MediaKind, PaymentMethod } from '@/lib/types';
+import { UNIT_STATUSES, PAYMENT_METHODS } from '@/lib/catalog';
 
 export default function UnitDetailPage() {
   const params = useParams();
   const id = String(params.id);
-  const { isAdmin, isManager, user } = usePermission();
+  const { can, user } = usePermission();
+  const canEditUnit = can('manage_units') || can('update_unit_status') || can('edit_unit_prices');
+  const showMoney = can('view_financials');
+  const canSiteWrite = can('update_progress');
+  const canUpload = can('upload_media');
   const unit = useAppStore((s) => s.units.find((u) => u.id === id));
   const project = useAppStore((s) => s.projects.find((p) => p.id === unit?.projectId));
   const tasks = useAppStore((s) => s.tasks.filter((t) => t.unitId === id));
   const media = useAppStore((s) => s.media.filter((m) => m.unitId === id));
   const expenses = useAppStore((s) => s.expenses.filter((e) => e.unitId === id));
+  const payments = useAppStore((s) => (s.clientPayments ?? []).filter((p) => p.unitId === id));
+  const addClientPayment = useAppStore((s) => s.addClientPayment);
   const updateUnit = useAppStore((s) => s.updateUnit);
   const setUnitStatus = useAppStore((s) => s.setUnitStatus);
   const saveSale = useAppStore((s) => s.saveSale);
@@ -49,6 +57,14 @@ export default function UnitDetailPage() {
   const [bookOpen, setBookOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [payForm, setPayForm] = useState({
+    amount: '',
+    date: new Date().toISOString().slice(0, 10),
+    method: 'cash' as PaymentMethod,
+    remarks: '',
+    kind: 'sale' as 'sale' | 'rental' | 'booking',
+  });
 
   const allTasks = useAppStore((s) => s.tasks);
   const progress = useMemo(
@@ -79,25 +95,27 @@ export default function UnitDetailPage() {
         subtitle={`${project?.name ?? ''} · Floor ${unit.floor} · ${unit.size}`}
         actions={
           <>
-            {(isAdmin || isManager) && (
+            {canEditUnit && (
               <Button variant="secondary" onClick={() => setEditOpen(true)}>
                 Edit
               </Button>
             )}
-            {isAdmin && (
-              <>
-                <Button variant="secondary" onClick={() => setSaleOpen(true)}>
-                  Sale
-                </Button>
-                <Button variant="secondary" onClick={() => setRentOpen(true)}>
-                  Rental
-                </Button>
-                <Button variant="secondary" onClick={() => setBookOpen(true)}>
-                  Booking
-                </Button>
-              </>
+            {can('record_sale') && (
+              <Button variant="secondary" onClick={() => setSaleOpen(true)}>
+                Sale
+              </Button>
             )}
-            {(isAdmin || isManager) && (
+            {can('record_rental') && (
+              <Button variant="secondary" onClick={() => setRentOpen(true)}>
+                Rental
+              </Button>
+            )}
+            {can('record_booking') && (
+              <Button variant="secondary" onClick={() => setBookOpen(true)}>
+                Booking
+              </Button>
+            )}
+            {canUpload && (
               <Button onClick={() => setMediaOpen(true)}>Upload evidence</Button>
             )}
           </>
@@ -107,6 +125,8 @@ export default function UnitDetailPage() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         <Badge tone={unitTone(unit.status)}>{statusLabel(unit.status)}</Badge>
         <Badge tone="blue">{progress}% complete</Badge>
+        <Badge tone={progress >= 100 ? 'green' : 'orange'}>{Math.max(0, Math.round(100 - progress))}% remaining</Badge>
+        <Badge>{clientPayLabel(unit)}</Badge>
       </div>
 
       <div
@@ -118,25 +138,28 @@ export default function UnitDetailPage() {
       >
         <Card title="Profile">
           <dl style={{ display: 'grid', gap: 8, fontSize: 13 }}>
-            <Row k="Sale price" v={formatPKR(unit.salePrice)} />
-            <Row k="Rental price" v={formatPKR(unit.rentalPrice)} />
-            <Row k="Expenses" v={formatPKR(unit.expenses + expenses.reduce((s, e) => s + e.amount, 0))} />
-            <Row k="Profit" v={formatPKR(unit.sale?.profit ?? 0)} />
+            <Row k="Type" v={statusLabel(unit.type)} />
+            {showMoney && (
+              <>
+                <Row k="Sale / rental value" v={formatPKR(unit.sale?.salePrice ?? unit.salePrice || unit.rentalPrice)} />
+                <Row k="Amount received" v={formatPKR(unit.sale?.amountReceived ?? unit.booking?.advanceAmount ?? 0)} />
+                <Row k="Pending amount" v={formatPKR(unit.sale?.remainingAmount ?? unit.booking?.remainingAmount ?? 0)} />
+                <Row k="Construction expense" v={formatPKR(expenses.filter((e) => e.scope !== 'admin').reduce((s, e) => s + e.amount, 0) || unit.expenses)} />
+                <Row k="Other expenses" v={formatPKR(expenses.filter((e) => e.scope === 'admin' || e.scope === 'daily').reduce((s, e) => s + e.amount, 0))} />
+              </>
+            )}
+            <Row k="Client status" v={clientPayLabel(unit)} />
             <Row k="Notes" v={unit.notes || '—'} />
           </dl>
-          {isAdmin && (
+          {can('update_unit_status') && (
             <Select
               label="Change status"
               value={unit.status}
               onChange={(e) => setUnitStatus(id, e.target.value as UnitStatus)}
             >
-              <option value="available">Available</option>
-              <option value="under_construction">Under Construction</option>
-              <option value="reserved">Reserved</option>
-              <option value="booked">Booked</option>
-              <option value="sold">Sold</option>
-              <option value="rented">Rented</option>
-              <option value="sold_land_only">Sold — Land Only</option>
+              {UNIT_STATUSES.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
             </Select>
           )}
         </Card>
@@ -152,7 +175,7 @@ export default function UnitDetailPage() {
                     <span style={{ fontSize: 12 }}>
                       {t.name} <Badge tone={taskTone(t.status)}>{t.weight}%</Badge>
                     </span>
-                    {(isAdmin || isManager) && (
+                    {canSiteWrite && (
                       <input
                         type="number"
                         min={0}
@@ -175,10 +198,19 @@ export default function UnitDetailPage() {
                 </div>
               ))}
             {tasks.length === 0 && <p style={{ color: 'var(--text-tertiary)' }}>No unit tasks</p>}
+            {tasks.some((t) => t.progress < 100) && (
+              <p style={{ marginTop: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
+                Remaining work:{' '}
+                {tasks
+                  .filter((t) => t.progress < 100)
+                  .map((t) => `${t.name} (${t.progress}%)`)
+                  .join(', ')}
+              </p>
+            )}
           </div>
         </Card>
 
-        {unit.sale && (
+        {showMoney && unit.sale && (
           <Card title="Sale Record">
             <dl style={{ display: 'grid', gap: 8, fontSize: 13 }}>
               <Row k="Buyer" v={`${unit.sale.buyer.name} · ${unit.sale.buyer.contact}`} />
@@ -193,7 +225,7 @@ export default function UnitDetailPage() {
           </Card>
         )}
 
-        {unit.rental && (
+        {showMoney && unit.rental && (
           <Card title="Rental Record">
             <dl style={{ display: 'grid', gap: 8, fontSize: 13 }}>
               <Row k="Tenant" v={`${unit.rental.tenant.name} · ${unit.rental.tenant.contact}`} />
@@ -233,7 +265,7 @@ export default function UnitDetailPage() {
           </Card>
         )}
 
-        {unit.booking && (
+        {showMoney && unit.booking && (
           <Card title="Booking">
             <dl style={{ display: 'grid', gap: 8, fontSize: 13 }}>
               <Row k="Customer" v={`${unit.booking.customerName} · ${unit.booking.contact}`} />
@@ -244,6 +276,43 @@ export default function UnitDetailPage() {
               <Row k="Booked" v={formatDate(unit.booking.bookingDate)} />
             </dl>
           </Card>
+        )}
+
+        {showMoney && (
+        <Card title="Client Payment History">
+          <dl style={{ display: 'grid', gap: 8, fontSize: 13, marginBottom: 12 }}>
+            <Row k="Total value" v={formatPKR(unit.sale?.salePrice ?? unit.salePrice)} />
+            <Row k="Received" v={formatPKR(unit.sale?.amountReceived ?? 0)} />
+            <Row k="Pending" v={formatPKR(unit.sale?.remainingAmount ?? unit.salePrice - (unit.sale?.amountReceived ?? 0))} />
+          </dl>
+          {payments.map((p) => (
+            <div
+              key={p.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 8,
+                padding: '8px 0',
+                borderTop: '1px solid var(--border-color)',
+                fontSize: 12,
+              }}
+            >
+              <span>
+                {formatDate(p.date)} · {statusLabel(p.method)} · {p.kind}
+                {p.remarks ? ` — ${p.remarks}` : ''}
+              </span>
+              <strong>{formatPKR(p.amount)}</strong>
+            </div>
+          ))}
+          {payments.length === 0 && (
+            <p style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>No payment records yet</p>
+          )}
+          {can('record_client_payment') && (
+            <Button size="sm" style={{ marginTop: 12 }} onClick={() => setPayOpen(true)}>
+              Record payment
+            </Button>
+          )}
+        </Card>
         )}
       </div>
 
@@ -306,7 +375,7 @@ export default function UnitDetailPage() {
           {unit.documents.length === 0 && (
             <p style={{ color: 'var(--text-tertiary)' }}>No documents</p>
           )}
-          {(isAdmin || isManager) && (
+          {canUpload && (
             <Input
               type="file"
               label="Upload document"
@@ -362,7 +431,7 @@ export default function UnitDetailPage() {
           const mediaIds: string[] = [];
           for (const file of payload.files) {
             const dataUrl = await fileToDataUrl(file.file);
-            const mid = addMedia({
+            const mid = await addMedia({
               projectId: unit.projectId,
               unitId: id,
               kind: file.kind,
@@ -377,7 +446,7 @@ export default function UnitDetailPage() {
             });
             mediaIds.push(mid);
           }
-          addProgressUpdate({
+          await addProgressUpdate({
             projectId: unit.projectId,
             unitId: id,
             title: `${unit.number} — ${payload.category}`,
@@ -400,6 +469,62 @@ export default function UnitDetailPage() {
           }}
         />
       </Modal>
+      <Modal open={payOpen} onClose={() => setPayOpen(false)} title="Record Client Payment">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Input
+            label="Amount"
+            type="number"
+            value={payForm.amount}
+            onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
+          />
+          <Input
+            label="Date"
+            type="date"
+            value={payForm.date}
+            onChange={(e) => setPayForm({ ...payForm, date: e.target.value })}
+          />
+          <Select
+            label="Method"
+            value={payForm.method}
+            onChange={(e) => setPayForm({ ...payForm, method: e.target.value as PaymentMethod })}
+          >
+            {PAYMENT_METHODS.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </Select>
+          <Select
+            label="Applies to"
+            value={payForm.kind}
+            onChange={(e) => setPayForm({ ...payForm, kind: e.target.value as 'sale' | 'rental' | 'booking' })}
+          >
+            <option value="sale">Sale</option>
+            <option value="rental">Rental</option>
+            <option value="booking">Booking</option>
+          </Select>
+          <Textarea
+            label="Remarks"
+            value={payForm.remarks}
+            onChange={(e) => setPayForm({ ...payForm, remarks: e.target.value })}
+          />
+          <Button
+            onClick={() => {
+              void addClientPayment({
+                unitId: id,
+                amount: Number(payForm.amount) || 0,
+                date: new Date(payForm.date).toISOString(),
+                method: payForm.method,
+                remarks: payForm.remarks,
+                kind: payForm.kind,
+                addedById: user?.id ?? '',
+                addedByName: user?.name ?? 'Admin',
+              });
+              setPayOpen(false);
+            }}
+          >
+            Save payment
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -420,6 +545,8 @@ function UnitEditForm({
   unit: NonNullable<ReturnType<typeof useAppStore.getState>['units'][0]>;
   onSave: (data: Partial<typeof unit>) => void;
 }) {
+  const { can } = usePermission();
+  const canPrice = can('edit_unit_prices');
   const [form, setForm] = useState({
     number: unit.number,
     size: unit.size,
@@ -433,8 +560,12 @@ function UnitEditForm({
       <Input label="Number" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} />
       <Input label="Size" value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })} />
       <Input label="Floor" value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })} />
-      <Input label="Sale price" type="number" value={form.salePrice} onChange={(e) => setForm({ ...form, salePrice: e.target.value })} />
-      <Input label="Rental price" type="number" value={form.rentalPrice} onChange={(e) => setForm({ ...form, rentalPrice: e.target.value })} />
+      {canPrice && (
+        <>
+          <Input label="Sale price" type="number" value={form.salePrice} onChange={(e) => setForm({ ...form, salePrice: e.target.value })} />
+          <Input label="Rental price" type="number" value={form.rentalPrice} onChange={(e) => setForm({ ...form, rentalPrice: e.target.value })} />
+        </>
+      )}
       <Textarea label="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
       <Button
         onClick={() =>
@@ -442,8 +573,12 @@ function UnitEditForm({
             number: form.number,
             size: form.size,
             floor: form.floor,
-            salePrice: Number(form.salePrice) || 0,
-            rentalPrice: Number(form.rentalPrice) || 0,
+            ...(canPrice
+              ? {
+                  salePrice: Number(form.salePrice) || 0,
+                  rentalPrice: Number(form.rentalPrice) || 0,
+                }
+              : {}),
             notes: form.notes,
           })
         }

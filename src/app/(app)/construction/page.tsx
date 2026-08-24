@@ -24,8 +24,11 @@ import { taskTone } from '@/lib/helpers';
 import type { TaskStatus } from '@/lib/types';
 import { v4 as uuid } from 'uuid';
 
+import { ClusterTabs } from '@/components/layout/ClusterTabs';
+import { CONSTRUCTION_TABS } from '@/lib/access';
+
 export default function ConstructionPage() {
-  const { isAdmin, isManager } = usePermission();
+  const { can } = usePermission();
   const projects = useAppStore((s) => s.projects);
   const units = useAppStore((s) => s.units);
   const tasks = useAppStore((s) => s.tasks);
@@ -91,13 +94,14 @@ export default function ConstructionPage() {
 
   return (
     <div>
+      <ClusterTabs items={CONSTRUCTION_TABS} />
       <PageHeader
-        title="Construction Progress"
-        subtitle="Stages with weights · Task → Shop → Floor → Building → Project"
+        title="Construction stages"
+        subtitle="Weighted progress · shop → floor → building · grey structure & photos next to this"
         actions={
-          (isAdmin || isManager) && (
+          can('update_progress') && (
             <>
-              {isAdmin && (
+              {can('manage_projects') && (
                 <Button variant="secondary" onClick={openWeights}>
                   Edit stage weights
                 </Button>
@@ -154,7 +158,7 @@ export default function ConstructionPage() {
               rows={projectTasks.map((t) => ({
                 name: <strong>{t.name}</strong>,
                 weight: `${t.weight}%`,
-                progress: (isAdmin || isManager) ? (
+                progress: can('update_progress') ? (
                   <input
                     type="range"
                     min={0}
@@ -176,7 +180,7 @@ export default function ConstructionPage() {
                 actions: (
                   <div style={{ display: 'flex', gap: 6 }}>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{t.progress}%</span>
-                    {isAdmin && (
+                    {can('manage_projects') && (
                       <Button size="sm" variant="danger" onClick={() => deleteTask(t.id)}>
                         Remove
                       </Button>

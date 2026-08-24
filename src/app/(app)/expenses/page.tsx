@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useAppStore, usePermission, EXPENSE_CATEGORIES } from '@/store/useAppStore';
-import { formatPKR, formatDate } from '@/lib/calculations';
+import { formatPKR, formatDate, isSameDay, isSameWeek, isSameMonth } from '@/lib/calculations';
 import {
   Button,
   Card,
@@ -15,10 +15,14 @@ import {
   Textarea,
 } from '@/components/ui';
 import { fileToDataUrl } from '@/lib/helpers';
-import type { ExpenseCategory } from '@/lib/types';
+import type { ExpenseCategory, ExpenseScope, PaymentMethod } from '@/lib/types';
+import { EXPENSE_SCOPES, PAYMENT_METHODS } from '@/lib/catalog';
 
 export default function ExpensesPage() {
-  const { user, isAdmin, can } = usePermission();
+  const { user, can } = usePermission();
+  const canEdit = can('add_expenses');
+  const canDelete = can('delete_financials');
+  const canTweak = can('edit_expenses') || canDelete;
   const expenses = useAppStore((s) => s.expenses);
   const projects = useAppStore((s) => s.projects);
   const units = useAppStore((s) => s.units);
@@ -34,6 +38,10 @@ export default function ExpensesPage() {
   }, [expenses, selectedProjectId]);
 
   const total = list.reduce((s, e) => s + e.amount, 0);
+  const dailyTotal = list.filter((e) => e.scope === 'daily').reduce((s, e) => s + e.amount, 0);
+  const todayTotal = list.filter((e) => isSameDay(e.date)).reduce((s, e) => s + e.amount, 0);
+  const weekTotal = list.filter((e) => isSameWeek(e.date)).reduce((s, e) => s + e.amount, 0);
+  const monthTotal = list.filter((e) => isSameMonth(e.date)).reduce((s, e) => s + e.amount, 0);
   const byCategory = EXPENSE_CATEGORIES.map((cat) => ({
     cat,
     amount: list.filter((e) => e.category === cat).reduce((s, e) => s + e.amount, 0),
@@ -50,9 +58,10 @@ export default function ExpensesPage() {
     description: '',
     receiptDataUrl: '',
     receiptName: '',
+    scope: 'unit' as ExpenseScope,
+    paymentMethod: 'cash' as PaymentMethod,
+    remarks: '',
   });
-
-  const canEdit = isAdmin || can('add_expenses');
 
   const submit = () => {
     if (!form.projectId || !form.amount) return;
@@ -66,6 +75,9 @@ export default function ExpensesPage() {
         description: form.description,
         receiptDataUrl: form.receiptDataUrl || undefined,
         receiptName: form.receiptName || undefined,
+        scope: form.scope,
+        paymentMethod: form.paymentMethod,
+        remarks: form.remarks,
       });
     } else {
       addExpense({
@@ -77,6 +89,9 @@ export default function ExpensesPage() {
         description: form.description,
         receiptDataUrl: form.receiptDataUrl || undefined,
         receiptName: form.receiptName || undefined,
+        scope: form.scope,
+        paymentMethod: form.paymentMethod,
+        remarks: form.remarks,
         addedById: user?.id ?? '',
         addedByName: user?.name ?? 'User',
       });
@@ -88,8 +103,12 @@ export default function ExpensesPage() {
   return (
     <div>
       <PageHeader
-        title="Construction Expenses"
-        subtitle="Track materials, labour and project costs"
+        title={can('view_financials') && !can('update_progress') ? 'Project expenses' : 'Site & project expenses'}
+        subtitle={
+          can('update_progress')
+            ? 'Daily site costs, unit spend and material-linked expenses'
+            : 'Construction, administrative and purchase-linked costs'
+        }
         actions={
           canEdit && (
             <Button
@@ -104,6 +123,9 @@ export default function ExpensesPage() {
                   description: '',
                   receiptDataUrl: '',
                   receiptName: '',
+                  scope: 'unit',
+                  paymentMethod: 'cash',
+                  remarks: '',
                 });
                 setOpen(true);
               }}
@@ -116,8 +138,11 @@ export default function ExpensesPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
         <Stat label="Total Expenses" value={formatPKR(total)} tone="orange" />
+        <Stat label="Today" value={formatPKR(todayTotal)} />
+        <Stat label="This week" value={formatPKR(weekTotal)} />
+        <Stat label="This month" value={formatPKR(monthTotal)} />
+        <Stat label="Daily site expenses" value={formatPKR(dailyTotal)} tone="blue" />
         <Stat label="Entries" value={list.length} />
-        <Stat label="Categories used" value={byCategory.length} />
       </div>
 
       <Card title="By category">
@@ -147,6 +172,8 @@ export default function ExpensesPage() {
             { key: 'amount', label: 'Amount' },
             { key: 'project', label: 'Project' },
             { key: 'unit', label: 'Unit' },
+            { key: 'scope', label: 'Scope' },
+            { key: 'method', label: 'Method' },
             { key: 'desc', label: 'Description' },
             { key: 'by', label: 'Added by' },
             { key: 'actions', label: '' },
@@ -157,6 +184,8 @@ export default function ExpensesPage() {
             amount: <strong>{formatPKR(e.amount)}</strong>,
             project: projects.find((p) => p.id === e.projectId)?.name ?? '—',
             unit: units.find((u) => u.id === e.unitId)?.number ?? '—',
+            scope: e.scope,
+            method: e.paymentMethod,
             desc: e.description,
             by: e.addedByName,
             actions: canEdit ? (
@@ -175,14 +204,25 @@ export default function ExpensesPage() {
                       description: e.description,
                       receiptDataUrl: e.receiptDataUrl ?? '',
                       receiptName: e.receiptName ?? '',
+                      scope: e.scope,
+                      paymentMethod: e.paymentMethod,
+                      remarks: e.remarks,
                     });
                     setOpen(true);
                   }}
                 >
                   Edit
                 </Button>
-                {(isAdmin || can('update_expenses')) && (
-                  <Button size="sm" variant="danger" onClick={() => deleteExpense(e.id)}>
+                {(can('edit_expenses') || canTweak) && (
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => {
+                      if (!canDelete) return;
+                      deleteExpense(e.id);
+                    }}
+                    disabled={!canDelete}
+                  >
                     Delete
                   </Button>
                 )}
@@ -207,6 +247,11 @@ export default function ExpensesPage() {
                 <option key={u.id} value={u.id}>{u.number}</option>
               ))}
           </Select>
+          <Select label="Scope" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value as ExpenseScope })}>
+            {EXPENSE_SCOPES.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </Select>
           <Select label="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as ExpenseCategory })}>
             {EXPENSE_CATEGORIES.map((c) => (
               <option key={c} value={c}>{c}</option>
@@ -214,7 +259,13 @@ export default function ExpensesPage() {
           </Select>
           <Input label="Amount" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
           <Input label="Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+          <Select label="Payment method" value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value as PaymentMethod })}>
+            {PAYMENT_METHODS.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </Select>
           <Textarea label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <Textarea label="Remarks" value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
           <Input
             label="Receipt / bill"
             type="file"

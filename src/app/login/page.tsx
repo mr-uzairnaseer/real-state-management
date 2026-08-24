@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
 import { DEMO_CREDENTIALS } from '@/lib/seed';
+import { ROLE_HOME } from '@/lib/access';
+import type { UserRole } from '@/lib/types';
 import { Button, Input } from '@/components/ui';
 import styles from './login.module.css';
 
@@ -11,6 +13,7 @@ export default function LoginPage() {
   const router = useRouter();
   const login = useAppStore((s) => s.login);
   const currentUserId = useAppStore((s) => s.currentUserId);
+  const users = useAppStore((s) => s.users);
   const hydrated = useAppStore((s) => s.hydrated);
   const [email, setEmail] = useState('admin@estate.local');
   const [password, setPassword] = useState('admin123');
@@ -18,37 +21,27 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (!useAppStore.getState().hydrated) {
-        useAppStore.setState({ hydrated: true });
-      }
-    }, 1500);
-    return () => window.clearTimeout(timer);
-  }, []);
+    if (hydrated && currentUserId) {
+      const role = users.find((u) => u.id === currentUserId)?.role as UserRole | undefined;
+      router.replace(role ? ROLE_HOME[role] : '/dashboard');
+    }
+  }, [hydrated, currentUserId, users, router]);
 
-  useEffect(() => {
-    if (hydrated && currentUserId) router.replace('/dashboard');
-  }, [hydrated, currentUserId, router]);
-
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      // Ensure store is usable even if persist is mid-flight
-      if (!useAppStore.getState().hydrated) {
-        useAppStore.setState({ hydrated: true });
-      }
-      const id = login(email.trim(), password);
+      const id = await login(email.trim(), password);
       if (!id) {
         setError('Invalid email or password');
         setBusy(false);
         return;
       }
-      router.replace('/dashboard');
-    } catch (err) {
-      console.error(err);
-      setError('Login failed — please refresh and try again');
+      const role = useAppStore.getState().users.find((u) => u.id === id)?.role;
+      router.replace(role ? ROLE_HOME[role] : '/dashboard');
+    } catch {
+      setError('Login failed — is the database running?');
       setBusy(false);
     }
   };
@@ -59,7 +52,7 @@ export default function LoginPage() {
         <div className={styles.brand}>
           <div className={styles.mark}>RE</div>
           <h1>Estate Progress</h1>
-          <p>Real estate & construction progress management</p>
+          <p>Role-based construction CRM — owner, site, and accounts</p>
         </div>
 
         <form className={styles.form} onSubmit={onSubmit}>

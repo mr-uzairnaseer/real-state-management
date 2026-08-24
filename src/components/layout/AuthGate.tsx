@@ -11,12 +11,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const hydrated = useAppStore((s) => s.hydrated);
 
   useEffect(() => {
-    // Safety: never hang on loading forever
     const timer = window.setTimeout(() => {
       if (!useAppStore.getState().hydrated) {
         useAppStore.setState({ hydrated: true });
       }
-    }, 1500);
+    }, 3000);
     return () => window.clearTimeout(timer);
   }, []);
 

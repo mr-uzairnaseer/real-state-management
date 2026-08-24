@@ -6,6 +6,8 @@ import { useAppStore } from '@/store/useAppStore';
 import { formatPKR, formatDate, statusLabel } from '@/lib/calculations';
 import { Badge, Card, DataTable, PageHeader, Stat } from '@/components/ui';
 import { paymentTone } from '@/lib/helpers';
+import { ClusterTabs } from '@/components/layout/ClusterTabs';
+import { CLIENT_TABS } from '@/lib/access';
 
 export default function SalesPage() {
   const units = useAppStore((s) => s.units);
@@ -25,9 +27,10 @@ export default function SalesPage() {
 
   return (
     <div>
+      <ClusterTabs items={CLIENT_TABS} />
       <PageHeader
-        title="Sold Property Management"
-        subtitle="Buyer details, payments, profit and historical sale records"
+        title="Sales"
+        subtitle="Sold units · buyer payments · outstanding balances · profit"
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>

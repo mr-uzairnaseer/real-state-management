@@ -16,9 +16,11 @@ import {
   Stat,
   Textarea,
 } from '@/components/ui';
+import { ClusterTabs } from '@/components/layout/ClusterTabs';
+import { CLIENT_TABS } from '@/lib/access';
 
 export default function BookingsPage() {
-  const { isAdmin, isManager } = usePermission();
+  const { can } = usePermission();
   const units = useAppStore((s) => s.units);
   const projects = useAppStore((s) => s.projects);
   const selectedProjectId = useAppStore((s) => s.selectedProjectId);
@@ -52,11 +54,12 @@ export default function BookingsPage() {
 
   return (
     <div>
+      <ClusterTabs items={CLIENT_TABS} />
       <PageHeader
-        title="Booking Management"
-        subtitle="Advance, remaining balance and booking status"
+        title="Bookings"
+        subtitle="Advances · remaining balance · reservation status"
         actions={
-          (isAdmin || isManager) && (
+          can('record_booking') && (
             <Button
               onClick={() => {
                 setForm({

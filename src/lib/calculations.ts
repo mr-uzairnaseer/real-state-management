@@ -83,6 +83,7 @@ export function countByStatus(units: Unit[]): Record<UnitStatus | 'total', numbe
     reserved: 0,
     booked: 0,
     under_construction: 0,
+    completed: 0,
     sold_land_only: 0,
   };
   for (const u of units) {
@@ -127,9 +128,57 @@ export function formatDateTime(iso?: string): string {
   }
 }
 
-export function statusLabel(status: string): string {
-  return status
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+export function clientPayLabel(unit: {
+  sale?: { remainingAmount: number; amountReceived: number; paymentStatus?: string } | null;
+  booking?: { remainingAmount: number; advanceAmount: number } | null;
+  rental?: { paymentHistory: { status: string }[] } | null;
+}): 'Fully Paid' | 'Partially Paid' | 'Payment Pending' | 'N/A' {
+  if (unit.sale) {
+    if (unit.sale.remainingAmount <= 0) return 'Fully Paid';
+    if (unit.sale.amountReceived > 0) return 'Partially Paid';
+    return 'Payment Pending';
+  }
+  if (unit.booking) {
+    if (unit.booking.remainingAmount <= 0) return 'Fully Paid';
+    if (unit.booking.advanceAmount > 0) return 'Partially Paid';
+    return 'Payment Pending';
+  }
+  if (unit.rental) {
+    const hist = unit.rental.paymentHistory ?? [];
+    if (!hist.length) return 'N/A';
+    if (hist.every((p) => p.status === 'paid')) return 'Fully Paid';
+    if (hist.some((p) => p.status === 'paid' || p.status === 'partial')) return 'Partially Paid';
+    return 'Payment Pending';
+  }
+  return 'N/A';
+}
+
+export function startOfDay(d = new Date()) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+export function isSameDay(iso: string, ref = new Date()) {
+  const a = new Date(iso);
+  return (
+    a.getFullYear() === ref.getFullYear() &&
+    a.getMonth() === ref.getMonth() &&
+    a.getDate() === ref.getDate()
+  );
+}
+
+export function isSameWeek(iso: string, ref = new Date()) {
+  const d = new Date(iso);
+  const start = new Date(ref);
+  start.setDate(ref.getDate() - ref.getDay());
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+  return d >= start && d < end;
+}
+
+export function isSameMonth(iso: string, ref = new Date()) {
+  const d = new Date(iso);
+  return d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth();
 }

@@ -9,17 +9,22 @@ import {
   formatPKR,
   formatDateTime,
   statusLabel,
+  clientPayLabel,
+  isSameDay,
 } from '@/lib/calculations';
 import { Badge, Card, PageHeader, ProgressBar, Stat } from '@/components/ui';
 import { unitTone } from '@/lib/helpers';
+import { ROLE_LABEL } from '@/lib/access';
 import styles from './dashboard.module.css';
 
 export default function DashboardPage() {
-  const { user, isAdmin, isManager } = usePermission();
+  const { user, role, isAdmin, isManager, isAccountant, can } = usePermission();
   const projects = useAppStore((s) => s.projects);
   const units = useAppStore((s) => s.units);
   const tasks = useAppStore((s) => s.tasks);
   const expenses = useAppStore((s) => s.expenses);
+  const purchases = useAppStore((s) => s.purchases ?? []);
+  const attendance = useAppStore((s) => s.attendance ?? []);
   const updates = useAppStore((s) => s.updates);
   const media = useAppStore((s) => s.media);
   const notifications = useAppStore((s) => s.notifications);
@@ -41,8 +46,7 @@ export default function DashboardPage() {
 
   const totalSales = scopedUnits.reduce((s, u) => s + (u.sale?.amountReceived ?? 0), 0);
   const totalRent = scopedUnits.reduce(
-    (s, u) =>
-      s + (u.rental?.paymentHistory.reduce((a, p) => a + p.paidAmount, 0) ?? 0),
+    (s, u) => s + (u.rental?.paymentHistory.reduce((a, p) => a + p.paidAmount, 0) ?? 0),
     0,
   );
   const rentPending = scopedUnits.reduce((s, u) => {
@@ -53,23 +57,33 @@ export default function DashboardPage() {
     return s + pending;
   }, 0);
   const totalExpenseAmt = scopedExpenses.reduce((s, e) => s + e.amount, 0);
+  const dailyExpenseAmt = scopedExpenses.filter((e) => e.scope === 'daily').reduce((s, e) => s + e.amount, 0);
+  const purchaseAmt = purchases.filter((p) => scopedIds.has(p.projectId)).reduce((s, p) => s + p.totalAmount, 0);
+  const todayExpense = scopedExpenses.filter((e) => isSameDay(e.date)).reduce((s, e) => s + e.amount, 0);
+  const todayPurchases = purchases
+    .filter((p) => scopedIds.has(p.projectId) && isSameDay(p.date))
+    .reduce((s, p) => s + p.totalAmount, 0);
+  const todayAttend = attendance.filter((a) => scopedIds.has(a.projectId) && isSameDay(a.date));
+  const todayPresent = todayAttend.reduce((s, a) => s + a.present, 0);
+  const totalReceivable = scopedUnits.reduce(
+    (s, u) => s + (u.sale?.salePrice ?? (u.status === 'sold' ? u.salePrice : 0)),
+    0,
+  );
+  const totalReceived = totalSales + totalRent;
+  const completedUnits = scopedUnits.filter(
+    (u) => u.constructionProgress >= 100 || u.status === 'completed',
+  ).length;
   const totalProfit = scopedUnits.reduce((s, u) => s + (u.sale?.profit ?? 0), 0);
-  const outstanding = scopedUnits.reduce((s, u) => {
-    return (
-      s +
-      (u.sale?.remainingAmount ?? 0) +
-      (u.booking?.remainingAmount ?? 0)
-    );
-  }, 0);
+  const outstanding = scopedUnits.reduce(
+    (s, u) => s + (u.sale?.remainingAmount ?? 0) + (u.booking?.remainingAmount ?? 0),
+    0,
+  );
 
   const overallProgress =
     scopedProjects.length === 0
       ? 0
       : Math.round(
-          (scopedProjects.reduce(
-            (s, p) => s + calculateProjectProgress(tasks, p.id, units),
-            0,
-          ) /
+          (scopedProjects.reduce((s, p) => s + calculateProjectProgress(tasks, p.id, units), 0) /
             scopedProjects.length) *
             10,
         ) / 10;
@@ -78,8 +92,7 @@ export default function DashboardPage() {
     scopedProjects.length === 0
       ? 0
       : Math.round(
-          (scopedProjects.reduce((s, p) => s + p.greyStructure.progress, 0) /
-            scopedProjects.length) *
+          (scopedProjects.reduce((s, p) => s + p.greyStructure.progress, 0) / scopedProjects.length) *
             10,
         ) / 10;
 
@@ -98,9 +111,7 @@ export default function DashboardPage() {
           (finishingTasks.reduce((s, t) => s + t.progress, 0) / finishingTasks.length) * 10,
         ) / 10;
 
-  const recentUpdates = updates
-    .filter((u) => scopedIds.has(u.projectId))
-    .slice(0, 5);
+  const recentUpdates = updates.filter((u) => scopedIds.has(u.projectId)).slice(0, 5);
   const recentMedia = media.filter((m) => scopedIds.has(m.projectId)).slice(0, 6);
   const recentNotifs = notifications.slice(0, 5);
 
@@ -111,29 +122,29 @@ export default function DashboardPage() {
     ? calculateProjectProgress(tasks, focusProject.id, units)
     : 0;
   const focusTasks = focusProject
-    ? tasks
-        .filter((t) => t.projectId === focusProject.id && !t.unitId)
-        .sort((a, b) => a.order - b.order)
+    ? tasks.filter((t) => t.projectId === focusProject.id && !t.unitId).sort((a, b) => a.order - b.order)
     : [];
   const completedStages = focusTasks.filter((t) => t.progress >= 100);
   const remainingStages = focusTasks.filter((t) => t.progress < 100);
 
+  const title = role ? `${ROLE_LABEL[role]} dashboard` : 'Dashboard';
+  const subtitle = isManager
+    ? 'What happened on site today — progress, spend, manpower, photos'
+    : isAccountant
+      ? 'Receivables, expenses and payment status across the project'
+      : 'Remote overview of construction, inventory and money';
+
   return (
     <div className="animate-fade-in">
-      <PageHeader
-        title={isAdmin ? 'Main Admin Dashboard' : 'Dashboard'}
-        subtitle="Construction · Inventory · Financials · Monitoring"
-      />
+      <PageHeader title={title} subtitle={subtitle} />
 
-      {focusProject && (
-        <Card className={styles.hero} title={`Overall Project Progress — ${focusProject.name}`}>
+      {focusProject && can('view_construction') && (
+        <Card className={styles.hero} title={`Site progress — ${focusProject.name}`}>
           <div className={styles.heroGrid}>
             <div>
               <div className={styles.heroPct}>{focusProgress}%</div>
               <ProgressBar value={focusProgress} label="Weighted completion" />
-              <p className={styles.heroHint}>
-                Auto-calculated from construction stage weights
-              </p>
+              <p className={styles.heroHint}>From stage weights on this project</p>
             </div>
             <div className={styles.stageCols}>
               <div>
@@ -163,110 +174,153 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className={styles.sectionLabel}>Projects</div>
-      <div className={styles.statGrid}>
-        <Stat label="Total Projects" value={scopedProjects.length} />
-        <Stat
-          label="Active"
-          value={scopedProjects.filter((p) => p.status === 'active').length}
-          tone="blue"
-        />
-        <Stat
-          label="Completed"
-          value={scopedProjects.filter((p) => p.status === 'completed').length}
-          tone="green"
-        />
-        <Stat label="Overall Progress" value={`${overallProgress}%`} tone="orange" />
-      </div>
+      {isManager && (
+        <>
+          <div className={styles.sectionLabel}>Today on site</div>
+          <div className={styles.statGrid}>
+            <Stat label="Overall completion" value={`${overallProgress}%`} tone="blue" />
+            <Stat label="Remaining work" value={`${Math.max(0, Math.round(100 - overallProgress))}%`} />
+            <Stat label="Today's expense" value={formatPKR(todayExpense)} tone="orange" />
+            <Stat label="Today's purchases" value={formatPKR(todayPurchases)} />
+            <Stat label="Workers present" value={todayPresent} tone="green" />
+            <Stat label="Units under construction" value={counts.under_construction} />
+          </div>
+        </>
+      )}
 
-      <div className={styles.sectionLabel}>Properties</div>
-      <div className={styles.statGrid}>
-        <Stat label="Total Units" value={counts.total} />
-        <Stat label="Sold" value={counts.sold} tone="green" />
-        <Stat label="Rented" value={counts.rented} tone="blue" />
-        <Stat label="Available" value={counts.available} />
-        <Stat label="Reserved / Booked" value={counts.reserved + counts.booked} tone="orange" />
-        <Stat label="Under Construction" value={counts.under_construction} />
-      </div>
+      {isAccountant && (
+        <>
+          <div className={styles.sectionLabel}>Money</div>
+          <div className={styles.statGrid}>
+            <Stat label="Receivables" value={formatPKR(totalReceivable)} />
+            <Stat label="Received" value={formatPKR(totalReceived)} tone="green" />
+            <Stat label="Pending" value={formatPKR(outstanding + rentPending)} tone="red" />
+            <Stat label="Expenses" value={formatPKR(totalExpenseAmt)} tone="orange" />
+            <Stat label="Purchases" value={formatPKR(purchaseAmt)} />
+            <Stat label="Profit" value={formatPKR(totalProfit)} tone="green" />
+          </div>
+          <div className={styles.sectionLabel}>Inventory snapshot</div>
+          <div className={styles.statGrid}>
+            <Stat label="Sold" value={counts.sold} tone="green" />
+            <Stat label="Rented" value={counts.rented} tone="blue" />
+            <Stat label="Available" value={counts.available} />
+            <Stat label="Booked / reserved" value={counts.booked + counts.reserved} tone="orange" />
+          </div>
+        </>
+      )}
 
-      <div className={styles.sectionLabel}>Financials</div>
-      <div className={styles.statGrid}>
-        <Stat label="Total Sales Received" value={formatPKR(totalSales)} tone="green" />
-        <Stat label="Total Rent Received" value={formatPKR(totalRent)} tone="blue" />
-        <Stat label="Rent Pending" value={formatPKR(rentPending)} tone="red" />
-        <Stat label="Total Expenses" value={formatPKR(totalExpenseAmt)} tone="orange" />
-        <Stat label="Total Profit" value={formatPKR(totalProfit)} tone="green" />
-        <Stat label="Outstanding Payments" value={formatPKR(outstanding)} />
-      </div>
+      {isAdmin && (
+        <>
+          <div className={styles.sectionLabel}>Projects</div>
+          <div className={styles.statGrid}>
+            <Stat label="Total projects" value={scopedProjects.length} />
+            <Stat label="Active" value={scopedProjects.filter((p) => p.status === 'active').length} tone="blue" />
+            <Stat
+              label="Completed"
+              value={scopedProjects.filter((p) => p.status === 'completed').length}
+              tone="green"
+            />
+            <Stat label="Overall progress" value={`${overallProgress}%`} tone="orange" />
+          </div>
 
-      <div className={styles.sectionLabel}>Construction</div>
-      <div className={styles.statGrid}>
-        <Stat label="Overall Completion" value={`${overallProgress}%`} />
-        <Stat label="Grey Structure" value={`${greyAvg}%`} tone="blue" />
-        <Stat label="Finishing" value={`${finishingPct}%`} tone="orange" />
-        <Stat label="Remaining Work" value={`${Math.max(0, Math.round(100 - overallProgress))}%`} />
-      </div>
+          <div className={styles.sectionLabel}>Inventory</div>
+          <div className={styles.statGrid}>
+            <Stat label="Total units" value={counts.total} />
+            <Stat label="Completed units" value={completedUnits} tone="green" />
+            <Stat label="Sold" value={counts.sold} tone="green" />
+            <Stat label="Rented" value={counts.rented} tone="blue" />
+            <Stat label="Available" value={counts.available} />
+            <Stat label="Under construction" value={counts.under_construction} />
+          </div>
+
+          <div className={styles.sectionLabel}>Financials</div>
+          <div className={styles.statGrid}>
+            <Stat label="Client receivables" value={formatPKR(totalReceivable)} />
+            <Stat label="Amount received" value={formatPKR(totalReceived)} tone="green" />
+            <Stat label="Pending" value={formatPKR(outstanding + rentPending)} tone="red" />
+            <Stat label="Construction expense" value={formatPKR(totalExpenseAmt)} tone="orange" />
+            <Stat label="Daily site expense" value={formatPKR(dailyExpenseAmt)} />
+            <Stat label="Material purchases" value={formatPKR(purchaseAmt)} />
+            <Stat label="Today expense" value={formatPKR(todayExpense)} />
+            <Stat label="Today purchases" value={formatPKR(todayPurchases)} />
+            <Stat label="Today attendance" value={todayPresent} tone="blue" />
+            <Stat label="Profit" value={formatPKR(totalProfit)} tone="green" />
+          </div>
+
+          <div className={styles.sectionLabel}>Construction</div>
+          <div className={styles.statGrid}>
+            <Stat label="Overall completion" value={`${overallProgress}%`} />
+            <Stat label="Grey structure" value={`${greyAvg}%`} tone="blue" />
+            <Stat label="Finishing" value={`${finishingPct}%`} tone="orange" />
+            <Stat label="Remaining" value={`${Math.max(0, Math.round(100 - overallProgress))}%`} />
+          </div>
+        </>
+      )}
 
       <div className={styles.twoCol}>
-        <Card title="Projects Overview">
-          <div className={styles.projectList}>
-            {scopedProjects.map((p) => {
-              const pct = calculateProjectProgress(tasks, p.id, units);
-              const uc = countByStatus(units.filter((u) => u.projectId === p.id));
-              return (
-                <Link key={p.id} href={`/projects/${p.id}`} className={styles.projectRow}>
-                  <div className={styles.projectTop}>
-                    <div>
-                      <strong>{p.name}</strong>
-                      <span>{p.type}</span>
+        {!isAccountant && (
+          <Card title="Recent site updates">
+            <ul className={styles.feed}>
+              {recentUpdates.map((u) => (
+                <li key={u.id}>
+                  <div className={styles.feedTitle}>{u.title}</div>
+                  <div className={styles.feedMeta}>
+                    {u.managerName} · {u.workCategory} · {formatDateTime(u.createdAt)}
+                  </div>
+                  <p>{u.comment}</p>
+                </li>
+              ))}
+              {recentUpdates.length === 0 && <li>No updates yet</li>}
+            </ul>
+          </Card>
+        )}
+
+        {can('view_financials') && (
+          <Card title="Projects">
+            <div className={styles.projectList}>
+              {scopedProjects.map((p) => {
+                const pct = calculateProjectProgress(tasks, p.id, units);
+                const uc = countByStatus(units.filter((u) => u.projectId === p.id));
+                return (
+                  <Link key={p.id} href={`/projects/${p.id}`} className={styles.projectRow}>
+                    <div className={styles.projectTop}>
+                      <div>
+                        <strong>{p.name}</strong>
+                        <span>{p.type}</span>
+                      </div>
+                      <Badge tone={p.status === 'active' ? 'blue' : 'neutral'}>
+                        {statusLabel(p.status)}
+                      </Badge>
                     </div>
-                    <Badge tone={p.status === 'active' ? 'blue' : 'neutral'}>
-                      {statusLabel(p.status)}
-                    </Badge>
-                  </div>
-                  <ProgressBar value={pct} />
-                  <div className={styles.projectMeta}>
-                    <span>{uc.total} units</span>
-                    <span>{formatPKR(p.totalBudget)} budget</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </Card>
+                    <ProgressBar value={pct} />
+                    <div className={styles.projectMeta}>
+                      <span>{uc.total} units</span>
+                      {can('view_financials') && <span>{formatPKR(p.totalBudget)} budget</span>}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </Card>
+        )}
 
-        <Card title="Recent Updates">
-          <ul className={styles.feed}>
-            {recentUpdates.map((u) => (
-              <li key={u.id}>
-                <div className={styles.feedTitle}>{u.title}</div>
-                <div className={styles.feedMeta}>
-                  {u.managerName} · {u.workCategory} · {formatDateTime(u.createdAt)}
+        {can('upload_media') && (
+          <Card title="Latest photos">
+            <div className={styles.mediaGrid}>
+              {recentMedia.map((m) => (
+                <div key={m.id} className={styles.mediaCard}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={m.dataUrl} alt={m.fileName} />
+                  <div>
+                    <Badge tone="blue">{m.kind}</Badge>
+                    <div className={styles.mediaMeta}>{m.workCategory}</div>
+                  </div>
                 </div>
-                <p>{u.comment}</p>
-              </li>
-            ))}
-            {recentUpdates.length === 0 && <li>No updates yet</li>}
-          </ul>
-        </Card>
-      </div>
-
-      <div className={styles.twoCol}>
-        <Card title="Latest Pictures">
-          <div className={styles.mediaGrid}>
-            {recentMedia.map((m) => (
-              <div key={m.id} className={styles.mediaCard}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={m.dataUrl} alt={m.fileName} />
-                <div>
-                  <Badge tone="blue">{m.kind}</Badge>
-                  <div className={styles.mediaMeta}>{m.workCategory}</div>
-                </div>
-              </div>
-            ))}
-            {recentMedia.length === 0 && <p className={styles.muted}>No pictures uploaded</p>}
-          </div>
-        </Card>
+              ))}
+              {recentMedia.length === 0 && <p className={styles.muted}>No pictures uploaded</p>}
+            </div>
+          </Card>
+        )}
 
         <Card title="Alerts">
           <ul className={styles.feed}>
@@ -284,17 +338,60 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <Card title="Unit Status Snapshot">
-        <div className={styles.unitChips}>
-          {scopedUnits.slice(0, 24).map((u) => (
-            <Link key={u.id} href={`/units/${u.id}`}>
-              <Badge tone={unitTone(u.status)}>
-                {u.number} · {statusLabel(u.status)} · {u.constructionProgress}%
-              </Badge>
-            </Link>
-          ))}
+      <Card title={isManager ? 'Unit progress' : 'Unit status overview'}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: 'var(--text-tertiary)' }}>
+                <th style={{ padding: '8px 6px' }}>Unit</th>
+                <th style={{ padding: '8px 6px' }}>Progress</th>
+                {can('view_financials') && <th style={{ padding: '8px 6px' }}>Client payment</th>}
+                {can('view_financials') && <th style={{ padding: '8px 6px' }}>Pending</th>}
+                {can('view_financials') && <th style={{ padding: '8px 6px' }}>Expense</th>}
+                <th style={{ padding: '8px 6px' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scopedUnits.slice(0, 40).map((u) => {
+                const unitExp =
+                  expenses.filter((e) => e.unitId === u.id).reduce((s, e) => s + e.amount, 0) ||
+                  u.expenses;
+                const pending = u.sale?.remainingAmount ?? u.booking?.remainingAmount ?? 0;
+                return (
+                  <tr key={u.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                    <td style={{ padding: '8px 6px' }}>
+                      <Link href={`/units/${u.id}`} style={{ fontWeight: 550 }}>
+                        {u.number}
+                      </Link>
+                    </td>
+                    <td style={{ padding: '8px 6px' }}>{u.constructionProgress}%</td>
+                    {can('view_financials') && (
+                      <td style={{ padding: '8px 6px' }}>{clientPayLabel(u)}</td>
+                    )}
+                    {can('view_financials') && (
+                      <td style={{ padding: '8px 6px' }}>{formatPKR(pending)}</td>
+                    )}
+                    {can('view_financials') && (
+                      <td style={{ padding: '8px 6px' }}>{formatPKR(unitExp)}</td>
+                    )}
+                    <td style={{ padding: '8px 6px' }}>
+                      <Badge tone={unitTone(u.status)}>{statusLabel(u.status)}</Badge>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </Card>
+
+      {isManager && (
+        <div style={{ marginTop: 16 }}>
+          <Link href="/manager" style={{ fontSize: 13, color: 'var(--accent-blue)' }}>
+            Open daily site log →
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

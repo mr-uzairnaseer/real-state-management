@@ -1,6 +1,6 @@
 {
   "name": "real-estate-management",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "engines": {
     "node": ">=20"
@@ -10,11 +10,22 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "vercel-build": "next build"
+    "vercel-build": "prisma generate && next build",
+    "postinstall": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:setup": "prisma db push && tsx prisma/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/client": "6.13.0",
     "@tabler/icons-react": "^3.34.0",
+    "bcryptjs": "^3.0.2",
     "date-fns": "^4.1.0",
+    "jose": "^6.0.12",
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2",
     "next": "^15.5.2",
@@ -25,12 +36,15 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.17.2",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@types/uuid": "^10.0.0",
     "eslint": "^9.33.0",
     "eslint-config-next": "^15.5.2",
+    "prisma": "6.13.0",
+    "tsx": "^4.20.3",
     "typescript": "^5.9.2"
   }
 }

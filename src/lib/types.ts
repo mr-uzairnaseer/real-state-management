@@ -7,6 +7,7 @@ export type UnitStatus =
   | 'reserved'
   | 'booked'
   | 'under_construction'
+  | 'completed'
   | 'sold_land_only';
 
 export type TaskStatus =
@@ -24,6 +25,26 @@ export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed';
 
 export type MediaKind = 'before' | 'during' | 'completed' | 'other';
 
+export type UnitType =
+  | 'shop'
+  | 'apartment'
+  | 'office'
+  | 'hall'
+  | 'parking'
+  | 'rooftop'
+  | 'entrance'
+  | 'boulevard'
+  | 'staircase'
+  | 'elevator'
+  | 'facade'
+  | 'common_area'
+  | 'plot'
+  | 'other';
+
+export type ExpenseScope = 'unit' | 'common' | 'admin' | 'daily' | 'purchase';
+
+export type PaymentMethod = 'cash' | 'bank_transfer' | 'cheque' | 'online' | 'other';
+
 export type ExpenseCategory =
   | 'Cement'
   | 'Steel'
@@ -34,11 +55,20 @@ export type ExpenseCategory =
   | 'Plumbing'
   | 'Paint'
   | 'Flooring'
+  | 'Tiles'
+  | 'Wood'
+  | 'Glass'
+  | 'Hardware'
   | 'Machinery'
   | 'Transportation'
   | 'Parking'
   | 'Decoration'
   | 'Grey Structure'
+  | 'Food / Refreshments'
+  | 'Site Maintenance'
+  | 'Utilities'
+  | 'Miscellaneous'
+  | 'Administrative'
   | 'Other Expenses';
 
 export interface User {
@@ -194,7 +224,7 @@ export interface Unit {
   id: string;
   projectId: string;
   number: string;
-  type: 'shop' | 'apartment' | 'office' | 'plot' | 'other';
+  type: UnitType;
   size: string;
   floor: string;
   status: UnitStatus;
@@ -239,6 +269,9 @@ export interface Expense {
   description: string;
   receiptDataUrl?: string;
   receiptName?: string;
+  scope: ExpenseScope;
+  paymentMethod: PaymentMethod;
+  remarks: string;
   addedById: string;
   addedByName: string;
   createdAt: string;
@@ -284,6 +317,10 @@ export interface Notification {
     | 'new_sale'
     | 'construction_update'
     | 'expense_added'
+    | 'purchase_added'
+    | 'bill_uploaded'
+    | 'payment_received'
+    | 'attendance_update'
     | 'milestone'
     | 'manager_report'
     | 'general';
@@ -321,6 +358,54 @@ export interface ManagerReport {
   createdAt: string;
 }
 
+export interface Purchase {
+  id: string;
+  projectId: string;
+  unitId?: string;
+  date: string;
+  item: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  supplier: string;
+  paymentMethod: PaymentMethod;
+  billDataUrl?: string;
+  billName?: string;
+  remarks: string;
+  expenseId?: string;
+  addedById: string;
+  addedByName: string;
+  createdAt: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  projectId: string;
+  date: string;
+  totalWorkers: number;
+  present: number;
+  absent: number;
+  category: string;
+  remarks: string;
+  addedById: string;
+  addedByName: string;
+  createdAt: string;
+}
+
+export interface ClientPayment {
+  id: string;
+  projectId: string;
+  unitId: string;
+  amount: number;
+  date: string;
+  method: PaymentMethod;
+  remarks: string;
+  kind: 'sale' | 'rental' | 'booking';
+  addedById: string;
+  addedByName: string;
+  createdAt: string;
+}
+
 export interface AppState {
   users: User[];
   currentUserId: string | null;
@@ -331,6 +416,9 @@ export interface AppState {
   media: MediaItem[];
   updates: ProgressUpdate[];
   expenses: Expense[];
+  purchases: Purchase[];
+  attendance: AttendanceRecord[];
+  clientPayments: ClientPayment[];
   notifications: Notification[];
   auditLog: AuditEntry[];
   reports: ManagerReport[];

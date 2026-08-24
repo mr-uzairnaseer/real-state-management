@@ -1,75 +1,55 @@
-# Estate Progress
+# Estate Progress — Real Estate Construction & Project Management
 
-Real Estate & Project Progress Management Software — a fully client-side, [Vercel](https://vercel.com)-deployable Next.js app. **No server, database, Redis, or env vars required.**
+Server-backed system for **admin** and **site manager** to monitor construction, units, client payments, expenses, purchases, attendance, and progress photos from one dashboard.
 
-UI inspired by the [Twenty CRM](https://github.com/twentyhq/twenty) design system.
-
-## Deploy to Vercel (recommended)
-
-1. Push this folder to GitHub (avoid spaces in the **repo** name if possible, e.g. `estate-progress`)
-2. Open [vercel.com/new](https://vercel.com/new) → import the repo
-3. Leave defaults:
-   - Framework: **Next.js**
-   - Build: `npm run build`
-   - Output: Next.js default
-4. **Do not** add Postgres, KV, Blob, or environment variables
-5. Deploy
-
-CLI:
+## Run on a server (Docker)
 
 ```bash
-npx vercel
+cp .env.example .env
+# set a strong JWT_SECRET
+
+docker compose up -d --build
 ```
 
-Production URL works immediately. Each visitor’s data lives in **their browser** (`localStorage` + IndexedDB).
-
-### What works on Vercel with zero backend
-
-| Capability | How |
-|---|---|
-| Full CRUD for all modules | Zustand store |
-| Auto progress / money math | Client calculations |
-| Pictures & receipts | IndexedDB (avoids localStorage quota) |
-| Multi-tab live sync | BroadcastChannel |
-| Rent due / overdue alerts | Scanned on every load |
-| PDF / Excel reports | Generated in-browser |
-| Roles | Admin / Manager / Accountant |
-
-### Limits (by design — no server)
-
-- Devices don’t share one database (each browser has its own workspace)
-- No email/SMS push — alerts appear inside the app
-- Very large videos may still hit browser storage limits
-
-## Demo logins
+Open http://localhost:3000 (or your VPS IP on port 3000).
 
 | Role | Email | Password |
 |------|-------|----------|
-| Main Admin | `admin@estate.local` | `admin123` |
-| Manager | `manager@estate.local` | `manager123` |
+| Admin | `admin@estate.local` | `admin123` |
+| Site Manager | `manager@estate.local` | `manager123` |
 | Accountant | `accountant@estate.local` | `account123` |
+
+First start creates the database schema and demo data. Later starts **keep existing data** (seed is skipped unless you reset from Settings or set `FORCE_SEED=1`).
+
+## What works
+
+- **Units:** shops, offices, halls, rooftop, parking, common areas — each with progress, sale/rent status, expenses, photos, notes
+- **Construction:** weighted stage progress, remaining work, daily updates + photos
+- **Expenses:** unit / common / admin / daily site, receipts, daily-week-month totals
+- **Purchases:** material buy with qty, supplier, bill upload — auto expense
+- **Client payments:** received / pending / fully-partial-pending, payment history
+- **Attendance:** daily present/absent by labour category
+- **Reports:** PDF + Excel (daily site, expenses, payments, purchases, attendance, completion)
+- **Roles:** manager cannot delete financial records, change unit prices, or open Settings/Users
 
 ## Local development
 
 ```bash
+docker compose up -d db
+cp .env.example .env
 npm install
+npm run db:setup
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+## Environment
 
-On Windows, if `npm` fails because the folder path has spaces:
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_SECRET` | Session secret |
+| `UPLOAD_DIR` | Upload folder (default `uploads`) |
+| `NEXT_PUBLIC_APP_URL` | Public URL |
+| `FORCE_SEED=1` | Re-seed on container start |
 
-```bat
-dev.cmd
-```
-
-## Stack
-
-- Next.js 15 (App Router) · React 19 · TypeScript  
-- Zustand (persisted) · IndexedDB · BroadcastChannel  
-- Tabler Icons · jsPDF · SheetJS  
-
-## License
-
-Private project use.
+Stack: Next.js 15 · Prisma · PostgreSQL · JWT · bcryptjs

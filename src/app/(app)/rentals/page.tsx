@@ -6,9 +6,11 @@ import { useAppStore, usePermission } from '@/store/useAppStore';
 import { formatPKR, formatDate, statusLabel } from '@/lib/calculations';
 import { Badge, Button, Card, DataTable, PageHeader, Stat } from '@/components/ui';
 import { paymentTone } from '@/lib/helpers';
+import { ClusterTabs } from '@/components/layout/ClusterTabs';
+import { CLIENT_TABS } from '@/lib/access';
 
 export default function RentalsPage() {
-  const { isAdmin, isManager } = usePermission();
+  const { can } = usePermission();
   const units = useAppStore((s) => s.units);
   const projects = useAppStore((s) => s.projects);
   const selectedProjectId = useAppStore((s) => s.selectedProjectId);
@@ -34,9 +36,10 @@ export default function RentalsPage() {
 
   return (
     <div>
+      <ClusterTabs items={CLIENT_TABS} />
       <PageHeader
-        title="Rental Property Management"
-        subtitle="Rent received · pending · overdue"
+        title="Rentals"
+        subtitle="Tenants · deposits · monthly rent collection"
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
@@ -75,7 +78,7 @@ export default function RentalsPage() {
             ),
             paid: payment.paidDate ? formatDate(payment.paidDate) : '—',
             actions:
-              (isAdmin || isManager) && payment.status !== 'paid' ? (
+              can('record_client_payment') && payment.status !== 'paid' ? (
                 <Button
                   size="sm"
                   onClick={() =>

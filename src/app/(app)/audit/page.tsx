@@ -5,14 +5,14 @@ import { formatDateTime } from '@/lib/calculations';
 import { Card, DataTable, PageHeader } from '@/components/ui';
 
 export default function AuditPage() {
-  const { isAdmin } = usePermission();
+  const { can } = usePermission();
   const auditLog = useAppStore((s) => s.auditLog);
 
-  if (!isAdmin) {
+  if (!can('view_audit')) {
     return (
       <div>
-        <PageHeader title="Audit Log" />
-        <Card title="Restricted">Only Main Admin can view audit history.</Card>
+        <PageHeader title="Audit log" />
+        <Card title="Restricted">Only the project owner can view audit history.</Card>
       </div>
     );
   }

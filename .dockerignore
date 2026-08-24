@@ -1,0 +1,8 @@
+node_modules
+node_modules_trash
+.next
+.git
+uploads
+.env
+*.md
+.DS_Store

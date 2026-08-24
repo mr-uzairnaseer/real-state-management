@@ -29,7 +29,8 @@ import shared from '../projects.module.css';
 export default function ProjectDetailPage() {
   const params = useParams();
   const id = String(params.id);
-  const { isAdmin } = usePermission();
+  const { can } = usePermission();
+  const canManage = can('manage_projects');
   const project = useAppStore((s) => s.projects.find((p) => p.id === id));
   const units = useAppStore((s) => s.units.filter((u) => u.projectId === id));
   const tasks = useAppStore((s) => s.tasks.filter((t) => t.projectId === id && !t.unitId));
@@ -111,7 +112,7 @@ export default function ProjectDetailPage() {
             <Button variant="secondary" onClick={() => setSelectedProject(id)}>
               Set as active
             </Button>
-            {isAdmin && <Button onClick={openEdit}>Edit project</Button>}
+            {canManage && <Button onClick={openEdit}>Edit project</Button>}
           </>
         }
       />

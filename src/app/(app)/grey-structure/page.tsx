@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useAppStore, usePermission } from '@/store/useAppStore';
 import { formatPKR } from '@/lib/calculations';
 import { Button, Card, Input, PageHeader, ProgressBar, Stat, Textarea } from '@/components/ui';
+import { ClusterTabs } from '@/components/layout/ClusterTabs';
+import { CONSTRUCTION_TABS } from '@/lib/access';
 
 export default function GreyStructurePage() {
-  const { isAdmin, isManager } = usePermission();
+  const { can } = usePermission();
   const projects = useAppStore((s) => s.projects);
   const units = useAppStore((s) => s.units);
   const selectedProjectId = useAppStore((s) => s.selectedProjectId);
@@ -70,11 +72,12 @@ export default function GreyStructurePage() {
 
   return (
     <div>
+      <ClusterTabs items={CONSTRUCTION_TABS} />
       <PageHeader
-        title="Grey Structure Management"
-        subtitle={project.name}
+        title="Grey structure"
+        subtitle={`${project.name} · foundation / frame progress for the building`}
         actions={
-          (isAdmin || isManager) && (
+          can('update_progress') && (
             <Button onClick={startEdit}>{editing ? 'Editing…' : 'Update'}</Button>
           )
         }

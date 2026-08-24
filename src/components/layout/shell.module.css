@@ -69,10 +69,27 @@
 .nav {
   flex: 1;
   overflow: auto;
-  padding: 10px 8px;
+  padding: 8px 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.navGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 8px;
+}
+
+.navGroupLabel {
+  padding: 10px 10px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
 }
 
 .navItem {

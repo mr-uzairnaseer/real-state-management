@@ -1,12 +1,12 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { v4 as uuid } from 'uuid';
+import { api } from '@/lib/api-client';
+import { buildPaymentAlerts } from '@/lib/alerts';
 import type {
   AppState,
-  AuditEntry,
   BookingRecord,
+  ConstructionStageTemplate,
   ConstructionTask,
   Expense,
   ExpenseCategory,
@@ -23,881 +23,467 @@ import type {
   UnitStatus,
   User,
   UserRole,
-  ConstructionStageTemplate,
+  AttendanceRecord,
+  ClientPayment,
+  Purchase,
   DocumentFile,
 } from '@/lib/types';
-import { createSeedData, DEFAULT_STAGES } from '@/lib/seed';
-import {
-  calculateUnitProgress,
-  remainingAmount,
-  profit,
-} from '@/lib/calculations';
-import { createSyncedStorage } from '@/lib/storage';
-import { buildPaymentAlerts } from '@/lib/alerts';
-import {
-  idbClear,
-  idbDel,
-  idbSet,
-  mediaKey,
-  receiptKey,
-  docKey,
-} from '@/lib/idb';
-import { loadAllBlobs } from '@/lib/blobs';
+import { EXPENSE_CATEGORIES as CATALOG_EXPENSE_CATEGORIES } from '@/lib/catalog';
+import { hasCapability, type Capability } from '@/lib/access';
 
 type Store = AppState & {
   hydrate: () => void;
+  bootstrap: () => Promise<void>;
   restoreBlobs: () => Promise<void>;
   runPaymentAlerts: () => void;
-  login: (email: string, password: string) => string | null;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<string | null>;
+  logout: () => Promise<void>;
   currentUser: () => User | null;
   setSelectedProject: (id: string | null) => void;
-  resetDemoData: () => void;
-
-  // Projects
-  createProject: (data: Partial<Project> & { name: string }) => string;
-  updateProject: (id: string, data: Partial<Project>) => void;
-  deleteProject: (id: string) => void;
-
-  // Units
-  createUnit: (data: Omit<Unit, 'id' | 'createdAt' | 'updatedAt' | 'documents' | 'expenses' | 'constructionProgress'> & { constructionProgress?: number }) => string;
-  updateUnit: (id: string, data: Partial<Unit>) => void;
-  deleteUnit: (id: string) => void;
-  setUnitStatus: (id: string, status: UnitStatus) => void;
-
-  // Sales / Rentals / Bookings
-  saveSale: (unitId: string, sale: SaleRecord) => void;
-  saveRental: (unitId: string, rental: RentalRecord) => void;
-  saveBooking: (unitId: string, booking: BookingRecord) => void;
-  recordRentPayment: (unitId: string, paymentId: string, paidAmount: number, paidDate?: string) => void;
-
-  // Construction
-  upsertTask: (task: Partial<ConstructionTask> & { projectId: string; name: string }) => string;
-  updateTaskProgress: (taskId: string, progress: number, comments?: string) => void;
-  deleteTask: (id: string) => void;
-  setStageTemplates: (projectId: string, stages: ConstructionStageTemplate[]) => void;
-  recalculateProgress: (projectId?: string) => void;
-
-  // Media & updates
-  addMedia: (item: Omit<MediaItem, 'id' | 'createdAt'>) => string;
-  removeMedia: (id: string) => void;
-  addProgressUpdate: (update: Omit<ProgressUpdate, 'id' | 'createdAt'>) => string;
-
-  // Expenses
-  addExpense: (e: Omit<Expense, 'id' | 'createdAt' | 'updatedAt'>) => string;
-  updateExpense: (id: string, data: Partial<Expense>) => void;
-  deleteExpense: (id: string) => void;
-
-  // Plots
-  createPlot: (p: Omit<Plot, 'id' | 'createdAt' | 'documents'>) => string;
-  updatePlot: (id: string, data: Partial<Plot>) => void;
-  deletePlot: (id: string) => void;
-
-  // Grey structure
-  updateGreyStructure: (projectId: string, data: Partial<GreyStructure>) => void;
-
-  // Users
-  createUser: (u: Omit<User, 'id' | 'createdAt'>) => string;
-  updateUser: (id: string, data: Partial<User>) => void;
-  deleteUser: (id: string) => void;
-
-  // Notifications & audit
-  addNotification: (n: Omit<Notification, 'id' | 'createdAt' | 'read'>) => void;
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: () => void;
-  logAudit: (entry: Omit<AuditEntry, 'id' | 'createdAt'>) => void;
-
-  // Manager reports
-  addManagerReport: (r: Omit<ManagerReport, 'id' | 'createdAt'>) => string;
-
-  // Documents helper
-  addUnitDocument: (unitId: string, doc: Omit<DocumentFile, 'id' | 'uploadedAt'>) => void;
+  resetDemoData: () => Promise<void>;
+  createProject: (data: Partial<Project> & { name: string }) => Promise<string>;
+  updateProject: (id: string, data: Partial<Project>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+  createUnit: (
+    data: Omit<
+      Unit,
+      'id' | 'createdAt' | 'updatedAt' | 'documents' | 'expenses' | 'constructionProgress'
+    > & { constructionProgress?: number },
+  ) => Promise<string>;
+  updateUnit: (id: string, data: Partial<Unit>) => Promise<void>;
+  deleteUnit: (id: string) => Promise<void>;
+  setUnitStatus: (id: string, status: UnitStatus) => Promise<void>;
+  saveSale: (unitId: string, sale: SaleRecord) => Promise<void>;
+  saveRental: (unitId: string, rental: RentalRecord) => Promise<void>;
+  saveBooking: (unitId: string, booking: BookingRecord) => Promise<void>;
+  recordRentPayment: (
+    unitId: string,
+    paymentId: string,
+    paidAmount: number,
+    paidDate?: string,
+  ) => Promise<void>;
+  upsertTask: (
+    task: Partial<ConstructionTask> & { projectId: string; name: string },
+  ) => Promise<string>;
+  updateTaskProgress: (taskId: string, progress: number, comments?: string) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
+  setStageTemplates: (projectId: string, stages: ConstructionStageTemplate[]) => Promise<void>;
+  recalculateProgress: (projectId?: string) => Promise<void>;
+  addMedia: (item: Omit<MediaItem, 'id' | 'createdAt'>) => Promise<string>;
+  removeMedia: (id: string) => Promise<void>;
+  addProgressUpdate: (update: Omit<ProgressUpdate, 'id' | 'createdAt'>) => Promise<string>;
+  addExpense: (e: Omit<Expense, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
+  updateExpense: (id: string, data: Partial<Expense>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
+  createPlot: (p: Omit<Plot, 'id' | 'createdAt' | 'documents'>) => Promise<string>;
+  updatePlot: (id: string, data: Partial<Plot>) => Promise<void>;
+  deletePlot: (id: string) => Promise<void>;
+  updateGreyStructure: (projectId: string, data: Partial<GreyStructure>) => Promise<void>;
+  createUser: (u: Omit<User, 'id' | 'createdAt'>) => Promise<string>;
+  updateUser: (id: string, data: Partial<User>) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
+  addNotification: (n: Omit<Notification, 'id' | 'createdAt' | 'read'>) => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
+  logAudit: (entry: {
+    userId: string;
+    userName: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    field?: string;
+    previousValue?: string;
+    newValue?: string;
+  }) => void;
+  addManagerReport: (r: Omit<ManagerReport, 'id' | 'createdAt'>) => Promise<string>;
+  addUnitDocument: (
+    unitId: string,
+    doc: Omit<DocumentFile, 'id' | 'uploadedAt'>,
+  ) => Promise<void>;
+  addPurchase: (p: Omit<Purchase, 'id' | 'createdAt' | 'expenseId'>) => Promise<string>;
+  deletePurchase: (id: string) => Promise<void>;
+  addAttendance: (a: Omit<AttendanceRecord, 'id' | 'createdAt'>) => Promise<string>;
+  deleteAttendance: (id: string) => Promise<void>;
+  addClientPayment: (
+    p: Omit<ClientPayment, 'id' | 'createdAt' | 'projectId'> & { projectId?: string },
+  ) => Promise<void>;
 };
 
-function audit(
-  get: () => Store,
-  set: (fn: (s: Store) => Partial<Store> | Store) => void,
-  entry: Omit<AuditEntry, 'id' | 'createdAt'>,
-) {
-  const row: AuditEntry = { ...entry, id: uuid(), createdAt: new Date().toISOString() };
-  set((s) => ({ auditLog: [row, ...s.auditLog].slice(0, 500) }));
+const empty: AppState = {
+  users: [],
+  currentUserId: null,
+  projects: [],
+  units: [],
+  plots: [],
+  tasks: [],
+  media: [],
+  updates: [],
+  expenses: [],
+  purchases: [],
+  attendance: [],
+  clientPayments: [],
+  notifications: [],
+  auditLog: [],
+  reports: [],
+  selectedProjectId: null,
+  hydrated: false,
+};
+
+function replaceUnit(units: Unit[], unit: Unit) {
+  return units.map((u) => (u.id === unit.id ? unit : u));
 }
 
-const seed = createSeedData();
+export const useAppStore = create<Store>()((set, get) => ({
+  ...empty,
 
-export const useAppStore = create<Store>()(
-  persist(
-    (set, get) => ({
-      ...seed,
+  hydrate: () => set({ hydrated: true }),
 
-      hydrate: () => set({ hydrated: true }),
+  restoreBlobs: async () => {
+    // Server serves media URLs — nothing to restore from IndexedDB
+  },
 
-      restoreBlobs: async () => {
-        const state = get();
-        const restored = await loadAllBlobs({
-          media: state.media,
-          expenses: state.expenses,
-          units: state.units,
-        });
-        set({
-          media: restored.media as typeof state.media,
-          expenses: restored.expenses as typeof state.expenses,
-          units: restored.units as typeof state.units,
-        });
-      },
+  bootstrap: async () => {
+    const data = await api.get<AppState>('/api/bootstrap');
+    set({ ...data, hydrated: true });
+    get().runPaymentAlerts();
+  },
 
-      runPaymentAlerts: () => {
-        const { units, notifications } = get();
-        const fresh = buildPaymentAlerts(units, notifications);
-        if (!fresh.length) return;
-        // Also flip overdue status on rent payments past due
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        set((s) => ({
-          notifications: [...fresh, ...s.notifications].slice(0, 200),
-          units: s.units.map((u) => {
-            if (!u.rental) return u;
-            return {
-              ...u,
-              rental: {
-                ...u.rental,
-                paymentHistory: u.rental.paymentHistory.map((p) => {
-                  if (p.status === 'paid') return p;
-                  const due = new Date(p.dueDate);
-                  due.setHours(0, 0, 0, 0);
-                  if (due.getTime() < today.getTime() && p.status !== 'overdue') {
-                    return { ...p, status: 'overdue' as const };
-                  }
-                  return p;
-                }),
-              },
-            };
-          }),
-        }));
-      },
+  runPaymentAlerts: () => {
+    const { units, notifications } = get();
+    const fresh = buildPaymentAlerts(units, notifications);
+    if (!fresh.length) return;
+    set((s) => ({
+      notifications: [...fresh, ...s.notifications].slice(0, 200),
+    }));
+    // Persist new alerts asynchronously
+    for (const n of fresh) {
+      void api.post('/api/notifications', n).catch(() => undefined);
+    }
+  },
 
-      login: (email, password) => {
-        const user = get().users.find(
-          (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password,
-        );
-        if (!user) return null;
-        set({ currentUserId: user.id });
-        return user.id;
-      },
+  login: async (email, password) => {
+    try {
+      const res = await api.post<{ user: User }>('/api/auth/login', { email, password });
+      set({ currentUserId: res.user.id });
+      await get().bootstrap();
+      return res.user.id;
+    } catch {
+      return null;
+    }
+  },
 
-      logout: () => set({ currentUserId: null }),
+  logout: async () => {
+    try {
+      await api.post('/api/auth/logout');
+    } catch {
+      // ignore
+    }
+    set({ ...empty, hydrated: true });
+  },
 
-      currentUser: () => {
-        const id = get().currentUserId;
-        return get().users.find((u) => u.id === id) ?? null;
-      },
+  currentUser: () => {
+    const id = get().currentUserId;
+    return get().users.find((u) => u.id === id) ?? null;
+  },
 
-      setSelectedProject: (id) => set({ selectedProjectId: id }),
+  setSelectedProject: (id) => {
+    set({ selectedProjectId: id });
+    void api.put('/api/ui/selected-project', { selectedProjectId: id }).catch(() => undefined);
+  },
 
-      resetDemoData: () => {
-        void idbClear();
-        const fresh = createSeedData();
-        set({ ...fresh, hydrated: true, currentUserId: get().currentUserId });
-        // Persist seed media into IndexedDB
-        void (async () => {
-          for (const m of fresh.media) {
-            if (m.dataUrl) await idbSet(mediaKey(m.id), m.dataUrl);
-          }
-        })();
-      },
+  resetDemoData: async () => {
+    await api.post('/api/demo/reset');
+    await get().bootstrap();
+  },
 
-      createProject: (data) => {
-        const id = uuid();
-        const stages: ConstructionStageTemplate[] = (data.stageTemplates?.length
-          ? data.stageTemplates
-          : DEFAULT_STAGES.map((s) => ({ ...s, id: uuid() })));
-        const project: Project = {
-          id,
-          name: data.name,
-          type: data.type ?? 'Real Estate',
-          description: data.description ?? '',
-          location: data.location ?? '',
-          status: data.status ?? 'planning',
-          totalBudget: data.totalBudget ?? 0,
-          startDate: data.startDate ?? new Date().toISOString(),
-          expectedEndDate: data.expectedEndDate,
-          managerIds: data.managerIds ?? [],
-          stageTemplates: stages,
-          greyStructure: data.greyStructure ?? {
-            projectId: id,
-            progress: 0,
-            budget: 0,
-            expenses: 0,
-            completedWork: '',
-            remainingWork: '',
-            constructionStatus: 'Not Started',
-            notes: '',
-          },
-          timelineNotes: data.timelineNotes ?? '',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        const user = get().currentUser();
-        set((s) => ({
-          projects: [...s.projects, project],
-          selectedProjectId: id,
-          tasks: [
-            ...s.tasks,
-            ...stages.map((st) => ({
-              id: uuid(),
-              projectId: id,
-              name: st.name,
-              weight: st.weight,
-              progress: 0,
-              status: 'not_started' as const,
-              comments: '',
-              order: st.order,
-            })),
-          ],
-        }));
-        if (user) {
-          audit(get, set, {
-            userId: user.id,
-            userName: user.name,
-            action: 'create',
-            entityType: 'project',
-            entityId: id,
-            newValue: project.name,
-          });
-        }
-        get().addNotification({
-          type: 'general',
-          title: 'Project Created',
-          message: `Project "${project.name}" was created`,
-          projectId: id,
-        });
-        return id;
-      },
+  createProject: async (data) => {
+    const res = await api.post<{ project: Project }>('/api/projects', data);
+    await get().bootstrap();
+    set({ selectedProjectId: res.project.id });
+    return res.project.id;
+  },
 
-      updateProject: (id, data) => {
-        const prev = get().projects.find((p) => p.id === id);
-        set((s) => ({
-          projects: s.projects.map((p) =>
-            p.id === id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p,
-          ),
-        }));
-        const user = get().currentUser();
-        if (user && prev) {
-          audit(get, set, {
-            userId: user.id,
-            userName: user.name,
-            action: 'update',
-            entityType: 'project',
-            entityId: id,
-            previousValue: JSON.stringify({ name: prev.name, status: prev.status }),
-            newValue: JSON.stringify(data),
-          });
-        }
-      },
+  updateProject: async (id, data) => {
+    const res = await api.patch<{ project: Project }>(`/api/projects/${id}`, data);
+    set((s) => ({
+      projects: s.projects.map((p) => (p.id === id ? res.project : p)),
+    }));
+  },
 
-      deleteProject: (id) => {
-        set((s) => ({
-          projects: s.projects.filter((p) => p.id !== id),
-          units: s.units.filter((u) => u.projectId !== id),
-          tasks: s.tasks.filter((t) => t.projectId !== id),
-          expenses: s.expenses.filter((e) => e.projectId !== id),
-          plots: s.plots.filter((p) => p.projectId !== id),
-          media: s.media.filter((m) => m.projectId !== id),
-          updates: s.updates.filter((u) => u.projectId !== id),
-          selectedProjectId:
-            s.selectedProjectId === id
-              ? s.projects.find((p) => p.id !== id)?.id ?? null
-              : s.selectedProjectId,
-        }));
-      },
+  deleteProject: async (id) => {
+    await api.delete(`/api/projects/${id}`);
+    await get().bootstrap();
+  },
 
-      createUnit: (data) => {
-        const id = uuid();
-        const unit: Unit = {
-          ...data,
-          id,
-          expenses: 0,
-          constructionProgress: data.constructionProgress ?? 0,
-          documents: [],
-          notes: data.notes ?? '',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        const project = get().projects.find((p) => p.id === data.projectId);
-        const tasks: ConstructionTask[] = (project?.stageTemplates ?? []).map((st) => ({
-          id: uuid(),
-          projectId: data.projectId,
-          unitId: id,
-          name: st.name,
-          weight: st.weight,
-          progress: 0,
-          status: 'not_started',
-          comments: '',
-          order: st.order,
-        }));
-        set((s) => ({ units: [...s.units, unit], tasks: [...s.tasks, ...tasks] }));
-        return id;
-      },
+  createUnit: async (data) => {
+    const res = await api.post<{ unit: Unit }>('/api/units', data);
+    await get().bootstrap();
+    return res.unit.id;
+  },
 
-      updateUnit: (id, data) => {
-        const prev = get().units.find((u) => u.id === id);
-        set((s) => ({
-          units: s.units.map((u) =>
-            u.id === id ? { ...u, ...data, updatedAt: new Date().toISOString() } : u,
-          ),
-        }));
-        const user = get().currentUser();
-        if (user && prev) {
-          const fields = Object.keys(data);
-          for (const field of fields) {
-            if (field === 'updatedAt' || field === 'sale' || field === 'rental' || field === 'booking' || field === 'documents') {
-              continue;
-            }
-            const previousValue = String(
-              (prev as unknown as Record<string, unknown>)[field] ?? '',
-            );
-            const newValue = String(
-              (data as unknown as Record<string, unknown>)[field] ?? '',
-            );
-            if (previousValue === newValue) continue;
-            audit(get, set, {
-              userId: user.id,
-              userName: user.name,
-              action: 'update',
-              entityType: 'unit',
-              entityId: id,
-              field,
-              previousValue,
-              newValue,
-            });
-          }
-          if (data.sale || data.rental || data.booking) {
-            audit(get, set, {
-              userId: user.id,
-              userName: user.name,
-              action: 'update',
-              entityType: 'unit',
-              entityId: id,
-              field: data.sale ? 'sale' : data.rental ? 'rental' : 'booking',
-              previousValue: '(previous record)',
-              newValue: '(updated record)',
-            });
-          }
-        }
-      },
+  updateUnit: async (id, data) => {
+    const res = await api.patch<{ unit: Unit }>(`/api/units/${id}`, data);
+    set((s) => ({ units: replaceUnit(s.units, res.unit) }));
+  },
 
-      deleteUnit: (id) => {
-        set((s) => ({
-          units: s.units.filter((u) => u.id !== id),
-          tasks: s.tasks.filter((t) => t.unitId !== id),
-        }));
-      },
+  deleteUnit: async (id) => {
+    await api.delete(`/api/units/${id}`);
+    set((s) => ({
+      units: s.units.filter((u) => u.id !== id),
+      tasks: s.tasks.filter((t) => t.unitId !== id),
+    }));
+  },
 
-      setUnitStatus: (id, status) => {
-        const prev = get().units.find((u) => u.id === id);
-        get().updateUnit(id, { status });
-        const user = get().currentUser();
-        if (user && prev) {
-          audit(get, set, {
-            userId: user.id,
-            userName: user.name,
-            action: 'update',
-            entityType: 'unit',
-            entityId: id,
-            field: 'status',
-            previousValue: prev.status,
-            newValue: status,
-          });
-        }
-      },
+  setUnitStatus: async (id, status) => {
+    await get().updateUnit(id, { status });
+  },
 
-      saveSale: (unitId, sale) => {
-        const remaining = remainingAmount(sale.salePrice, sale.amountReceived);
-        const computedProfit = profit(sale.salePrice, sale.totalCost, sale.additionalExpenses);
-        const paymentStatus =
-          remaining <= 0 ? 'paid' : sale.amountReceived > 0 ? 'partial' : 'pending';
-        const status: UnitStatus =
-          remaining <= 0 && paymentStatus === 'paid' ? 'sold' : 'sold';
-        get().updateUnit(unitId, {
-          sale: { ...sale, remainingAmount: remaining, profit: computedProfit, paymentStatus },
-          status,
-          salePrice: sale.salePrice,
-        });
-        get().addNotification({
-          type: 'new_sale',
-          title: 'Sale Updated',
-          message: `Sale recorded for unit — ${sale.buyer.name}`,
-          unitId,
-          projectId: get().units.find((u) => u.id === unitId)?.projectId,
-        });
-      },
+  saveSale: async (unitId, sale) => {
+    const res = await api.patch<{ unit: Unit }>(`/api/units/${unitId}`, {
+      _action: 'saveSale',
+      sale,
+    });
+    set((s) => ({ units: replaceUnit(s.units, res.unit) }));
+    await get().bootstrap();
+  },
 
-      saveRental: (unitId, rental) => {
-        get().updateUnit(unitId, { rental, status: 'rented', rentalPrice: rental.monthlyRent });
-      },
+  saveRental: async (unitId, rental) => {
+    const res = await api.patch<{ unit: Unit }>(`/api/units/${unitId}`, {
+      _action: 'saveRental',
+      rental,
+    });
+    set((s) => ({ units: replaceUnit(s.units, res.unit) }));
+  },
 
-      saveBooking: (unitId, booking) => {
-        const remaining = remainingAmount(booking.totalPrice, booking.advanceAmount);
-        get().updateUnit(unitId, {
-          booking: { ...booking, remainingAmount: remaining, status: 'booked' },
-          status: 'booked',
-        });
-        get().addNotification({
-          type: 'new_booking',
-          title: 'New Booking',
-          message: `${booking.customerName} booked a unit — advance ${booking.advanceAmount}`,
-          unitId,
-          projectId: get().units.find((u) => u.id === unitId)?.projectId,
-        });
-      },
+  saveBooking: async (unitId, booking) => {
+    const res = await api.patch<{ unit: Unit }>(`/api/units/${unitId}`, {
+      _action: 'saveBooking',
+      booking,
+    });
+    set((s) => ({ units: replaceUnit(s.units, res.unit) }));
+    await get().bootstrap();
+  },
 
-      recordRentPayment: (unitId, paymentId, paidAmount, paidDate) => {
-        const unit = get().units.find((u) => u.id === unitId);
-        if (!unit?.rental) return;
-        const paymentHistory = unit.rental.paymentHistory.map((p) => {
-          if (p.id !== paymentId) return p;
-          const status =
-            paidAmount >= p.amount ? 'paid' : paidAmount > 0 ? 'partial' : p.status;
-          return {
-            ...p,
-            paidAmount,
-            paidDate: paidDate ?? new Date().toISOString(),
-            status: status as typeof p.status,
-          };
-        });
-        get().updateUnit(unitId, { rental: { ...unit.rental, paymentHistory } });
-      },
+  recordRentPayment: async (unitId, paymentId, paidAmount, paidDate) => {
+    const res = await api.patch<{ unit: Unit }>(`/api/units/${unitId}`, {
+      _action: 'recordRentPayment',
+      paymentId,
+      paidAmount,
+      paidDate,
+    });
+    set((s) => ({ units: replaceUnit(s.units, res.unit) }));
+  },
 
-      upsertTask: (task) => {
-        if (task.id) {
-          set((s) => ({
-            tasks: s.tasks.map((t) => (t.id === task.id ? { ...t, ...task } : t)),
-          }));
-          get().recalculateProgress(task.projectId);
-          return task.id;
-        }
-        const id = uuid();
-        const row: ConstructionTask = {
-          id,
-          projectId: task.projectId,
-          unitId: task.unitId,
-          name: task.name,
-          weight: task.weight ?? 0,
-          progress: task.progress ?? 0,
-          startDate: task.startDate,
-          expectedCompletionDate: task.expectedCompletionDate,
-          status: task.status ?? 'not_started',
-          comments: task.comments ?? '',
-          order: task.order ?? get().tasks.filter((t) => t.projectId === task.projectId).length + 1,
-        };
-        set((s) => ({ tasks: [...s.tasks, row] }));
-        get().recalculateProgress(task.projectId);
-        return id;
-      },
+  upsertTask: async (task) => {
+    if (task.id) {
+      const res = await api.patch<{ task: ConstructionTask }>(`/api/tasks/${task.id}`, task);
+      set((s) => ({
+        tasks: s.tasks.map((t) => (t.id === task.id ? res.task : t)),
+      }));
+      await get().bootstrap();
+      return res.task.id;
+    }
+    const res = await api.post<{ task: ConstructionTask }>('/api/tasks', task);
+    set((s) => ({ tasks: [...s.tasks, res.task] }));
+    return res.task.id;
+  },
 
-      updateTaskProgress: (taskId, progress, comments) => {
-        const task = get().tasks.find((t) => t.id === taskId);
-        if (!task) return;
-        const clamped = Math.min(100, Math.max(0, progress));
-        const status =
-          clamped >= 100 ? 'completed' : clamped > 0 ? 'in_progress' : 'not_started';
-        const user = get().currentUser();
-        set((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === taskId
-              ? {
-                  ...t,
-                  progress: clamped,
-                  status,
-                  comments: comments ?? t.comments,
-                }
-              : t,
-          ),
-        }));
-        if (user) {
-          audit(get, set, {
-            userId: user.id,
-            userName: user.name,
-            action: 'update',
-            entityType: 'task',
-            entityId: taskId,
-            field: 'progress',
-            previousValue: String(task.progress),
-            newValue: String(clamped),
-          });
-        }
-        get().recalculateProgress(task.projectId);
-        get().addNotification({
-          type: 'construction_update',
-          title: 'Construction Update',
-          message: `${task.name} progress set to ${clamped}%`,
-          projectId: task.projectId,
-          unitId: task.unitId,
-        });
-      },
+  updateTaskProgress: async (taskId, progress, comments) => {
+    const res = await api.patch<{ task: ConstructionTask }>(`/api/tasks/${taskId}`, {
+      progress,
+      comments,
+    });
+    set((s) => ({
+      tasks: s.tasks.map((t) => (t.id === taskId ? res.task : t)),
+    }));
+    await get().bootstrap();
+  },
 
-      deleteTask: (id) => {
-        const task = get().tasks.find((t) => t.id === id);
-        set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
-        if (task) get().recalculateProgress(task.projectId);
-      },
+  deleteTask: async (id) => {
+    await api.delete(`/api/tasks/${id}`);
+    set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
+  },
 
-      setStageTemplates: (projectId, stages) => {
-        get().updateProject(projectId, { stageTemplates: stages });
-      },
+  setStageTemplates: async (projectId, stages) => {
+    await get().updateProject(projectId, { stageTemplates: stages });
+  },
 
-      recalculateProgress: (projectId) => {
-        const { tasks, units, projects } = get();
-        const targetProjects = projectId
-          ? projects.filter((p) => p.id === projectId)
-          : projects;
+  recalculateProgress: async () => {
+    await get().bootstrap();
+  },
 
-        const updatedUnits = units.map((u) => {
-          if (projectId && u.projectId !== projectId) return u;
-          const unitTasks = tasks.filter((t) => t.unitId === u.id);
-          if (!unitTasks.length) return u;
-          return {
-            ...u,
-            constructionProgress: calculateUnitProgress(tasks, u.id),
-            updatedAt: new Date().toISOString(),
-          };
-        });
+  addMedia: async (item) => {
+    const res = await api.post<{ media: MediaItem }>('/api/media', item);
+    set((s) => ({ media: [res.media, ...s.media] }));
+    return res.media.id;
+  },
 
-        set({
-          units: updatedUnits,
-          projects: projects.map((p) => {
-            if (projectId && p.id !== projectId) return p;
-            if (!targetProjects.find((tp) => tp.id === p.id)) return p;
-            return { ...p, updatedAt: new Date().toISOString() };
-          }),
-        });
+  removeMedia: async (id) => {
+    await api.delete(`/api/media/${id}`);
+    set((s) => ({ media: s.media.filter((m) => m.id !== id) }));
+  },
 
-        // Sync grey structure progress from Grey Structure task if present
-        for (const p of targetProjects) {
-          const gsTask = get().tasks.find(
-            (t) =>
-              t.projectId === p.id &&
-              !t.unitId &&
-              t.name.toLowerCase().includes('grey'),
-          );
-          if (gsTask) {
-            get().updateGreyStructure(p.id, { progress: gsTask.progress });
-          }
-        }
-      },
+  addProgressUpdate: async (update) => {
+    const res = await api.post<{ update: ProgressUpdate }>('/api/progress-updates', update);
+    set((s) => ({ updates: [res.update, ...s.updates] }));
+    await get().bootstrap();
+    return res.update.id;
+  },
 
-      addMedia: (item) => {
-        const id = uuid();
-        const row = { ...item, id, createdAt: new Date().toISOString() };
-        set((s) => ({
-          media: [row, ...s.media],
-        }));
-        if (item.dataUrl) void idbSet(mediaKey(id), item.dataUrl);
-        const user = get().currentUser();
-        if (user) {
-          audit(get, set, {
-            userId: user.id,
-            userName: user.name,
-            action: 'create',
-            entityType: 'media',
-            entityId: id,
-            field: 'workCategory',
-            newValue: item.workCategory,
-          });
-        }
-        return id;
-      },
+  addExpense: async (e) => {
+    const res = await api.post<{ expense: Expense }>('/api/expenses', e);
+    set((s) => ({ expenses: [res.expense, ...s.expenses] }));
+    await get().bootstrap();
+    return res.expense.id;
+  },
 
-      removeMedia: (id) => {
-        set((s) => ({ media: s.media.filter((m) => m.id !== id) }));
-        void idbDel(mediaKey(id));
-      },
+  updateExpense: async (id, data) => {
+    const res = await api.patch<{ expense: Expense }>(`/api/expenses/${id}`, data);
+    set((s) => ({
+      expenses: s.expenses.map((e) => (e.id === id ? res.expense : e)),
+    }));
+  },
 
-      addProgressUpdate: (update) => {
-        const id = uuid();
-        set((s) => ({
-          updates: [
-            { ...update, id, createdAt: new Date().toISOString() },
-            ...s.updates,
-          ],
-        }));
-        get().addNotification({
-          type: 'manager_report',
-          title: 'Manager Update',
-          message: update.title,
-          projectId: update.projectId,
-          unitId: update.unitId,
-        });
-        return id;
-      },
+  deleteExpense: async (id) => {
+    await api.delete(`/api/expenses/${id}`);
+    set((s) => ({ expenses: s.expenses.filter((e) => e.id !== id) }));
+  },
 
-      addExpense: (e) => {
-        const id = uuid();
-        const row: Expense = {
-          ...e,
-          id,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        set((s) => ({ expenses: [row, ...s.expenses] }));
-        if (e.receiptDataUrl) void idbSet(receiptKey(id), e.receiptDataUrl);
-        get().addNotification({
-          type: 'expense_added',
-          title: 'Expense Added',
-          message: `${e.category}: ${e.amount} — ${e.description}`,
-          projectId: e.projectId,
-          unitId: e.unitId,
-        });
-        const user = get().currentUser();
-        if (user) {
-          audit(get, set, {
-            userId: user.id,
-            userName: user.name,
-            action: 'create',
-            entityType: 'expense',
-            entityId: id,
-            newValue: `${e.category} ${e.amount}`,
-          });
-        }
-        return id;
-      },
+  createPlot: async (p) => {
+    const res = await api.post<{ plot: Plot }>('/api/plots', p);
+    set((s) => ({ plots: [...s.plots, res.plot] }));
+    return res.plot.id;
+  },
 
-      updateExpense: (id, data) => {
-        const prev = get().expenses.find((e) => e.id === id);
-        set((s) => ({
-          expenses: s.expenses.map((e) =>
-            e.id === id ? { ...e, ...data, updatedAt: new Date().toISOString() } : e,
-          ),
-        }));
-        if (data.receiptDataUrl) void idbSet(receiptKey(id), data.receiptDataUrl);
-        const user = get().currentUser();
-        if (user && prev) {
-          audit(get, set, {
-            userId: user.id,
-            userName: user.name,
-            action: 'update',
-            entityType: 'expense',
-            entityId: id,
-            previousValue: `${prev.category} ${prev.amount}`,
-            newValue: JSON.stringify(data),
-          });
-        }
-      },
+  updatePlot: async (id, data) => {
+    const res = await api.patch<{ plot: Plot }>(`/api/plots/${id}`, data);
+    set((s) => ({
+      plots: s.plots.map((p) => (p.id === id ? res.plot : p)),
+    }));
+  },
 
-      deleteExpense: (id) => {
-        set((s) => ({ expenses: s.expenses.filter((e) => e.id !== id) }));
-        void idbDel(receiptKey(id));
-      },
+  deletePlot: async (id) => {
+    await api.delete(`/api/plots/${id}`);
+    set((s) => ({ plots: s.plots.filter((p) => p.id !== id) }));
+  },
 
-      createPlot: (p) => {
-        const id = uuid();
-        set((s) => ({
-          plots: [
-            ...s.plots,
-            { ...p, id, documents: [], createdAt: new Date().toISOString() },
-          ],
-        }));
-        return id;
-      },
+  updateGreyStructure: async (projectId, data) => {
+    const res = await api.patch<{ project: Project }>(
+      `/api/projects/${projectId}/grey-structure`,
+      data,
+    );
+    set((s) => ({
+      projects: s.projects.map((p) => (p.id === projectId ? res.project : p)),
+    }));
+  },
 
-      updatePlot: (id, data) => {
-        set((s) => ({
-          plots: s.plots.map((p) => {
-            if (p.id !== id) return p;
-            const next = { ...p, ...data };
-            if (data.paymentReceived !== undefined || data.salePrice !== undefined) {
-              next.remainingPayment = remainingAmount(
-                next.salePrice,
-                next.paymentReceived,
-              );
-              if (next.remainingPayment <= 0 && next.paymentReceived > 0) {
-                next.status = 'sold_land_only';
-              }
-            }
-            return next;
-          }),
-        }));
-      },
+  createUser: async (u) => {
+    const res = await api.post<{ user: User }>('/api/users', u);
+    set((s) => ({ users: [...s.users, res.user] }));
+    return res.user.id;
+  },
 
-      deletePlot: (id) => set((s) => ({ plots: s.plots.filter((p) => p.id !== id) })),
+  updateUser: async (id, data) => {
+    const res = await api.patch<{ user: User }>(`/api/users/${id}`, data);
+    set((s) => ({
+      users: s.users.map((u) => (u.id === id ? res.user : u)),
+    }));
+  },
 
-      updateGreyStructure: (projectId, data) => {
-        set((s) => ({
-          projects: s.projects.map((p) =>
-            p.id === projectId
-              ? {
-                  ...p,
-                  greyStructure: { ...p.greyStructure, ...data, projectId },
-                  updatedAt: new Date().toISOString(),
-                }
-              : p,
-          ),
-        }));
-      },
+  deleteUser: async (id) => {
+    await api.delete(`/api/users/${id}`);
+    set((s) => ({ users: s.users.filter((u) => u.id !== id) }));
+  },
 
-      createUser: (u) => {
-        const id = uuid();
-        set((s) => ({
-          users: [...s.users, { ...u, id, createdAt: new Date().toISOString() }],
-        }));
-        return id;
-      },
+  addNotification: async (n) => {
+    const res = await api.post<{ notification: Notification }>('/api/notifications', n);
+    set((s) => ({
+      notifications: [res.notification, ...s.notifications].slice(0, 200),
+    }));
+  },
 
-      updateUser: (id, data) => {
-        set((s) => ({
-          users: s.users.map((u) => (u.id === id ? { ...u, ...data } : u)),
-        }));
-      },
+  markNotificationRead: async (id) => {
+    await api.patch('/api/notifications', { id });
+    set((s) => ({
+      notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
+    }));
+  },
 
-      deleteUser: (id) => {
-        if (id === get().currentUserId) return;
-        set((s) => ({ users: s.users.filter((u) => u.id !== id) }));
-      },
+  markAllNotificationsRead: async () => {
+    await api.patch('/api/notifications', { _action: 'readAll' });
+    set((s) => ({
+      notifications: s.notifications.map((n) => ({ ...n, read: true })),
+    }));
+  },
 
-      addNotification: (n) => {
-        set((s) => ({
-          notifications: [
-            {
-              ...n,
-              id: uuid(),
-              read: false,
-              createdAt: new Date().toISOString(),
-            },
-            ...s.notifications,
-          ].slice(0, 200),
-        }));
-      },
+  logAudit: () => {
+    // Server writes audits on mutations
+  },
 
-      markNotificationRead: (id) => {
-        set((s) => ({
-          notifications: s.notifications.map((n) =>
-            n.id === id ? { ...n, read: true } : n,
-          ),
-        }));
-      },
+  addManagerReport: async (r) => {
+    const res = await api.post<{ report: ManagerReport }>('/api/reports', r);
+    set((s) => ({ reports: [res.report, ...s.reports] }));
+    await get().bootstrap();
+    return res.report.id;
+  },
 
-      markAllNotificationsRead: () => {
-        set((s) => ({
-          notifications: s.notifications.map((n) => ({ ...n, read: true })),
-        }));
-      },
+  addUnitDocument: async (unitId, doc) => {
+    const document = {
+      ...doc,
+      id: crypto.randomUUID(),
+      uploadedAt: new Date().toISOString(),
+    };
+    const res = await api.patch<{ unit: Unit }>(`/api/units/${unitId}`, {
+      _action: 'addDocument',
+      document,
+    });
+    set((s) => ({ units: replaceUnit(s.units, res.unit) }));
+  },
 
-      logAudit: (entry) => {
-        audit(get, set, entry);
-      },
+  addPurchase: async (p) => {
+    const res = await api.post<{ purchase: Purchase }>('/api/purchases', p);
+    await get().bootstrap();
+    return res.purchase.id;
+  },
 
-      addManagerReport: (r) => {
-        const id = uuid();
-        set((s) => ({
-          reports: [
-            { ...r, id, createdAt: new Date().toISOString() },
-            ...s.reports,
-          ],
-        }));
-        get().addNotification({
-          type: 'manager_report',
-          title: 'Manager Report Submitted',
-          message: `${r.managerName}: ${r.title}`,
-          projectId: r.projectId,
-        });
-        return id;
-      },
+  deletePurchase: async (id) => {
+    await api.delete(`/api/purchases/${id}`);
+    set((s) => ({ purchases: s.purchases.filter((x) => x.id !== id) }));
+    await get().bootstrap();
+  },
 
-      addUnitDocument: (unitId, doc) => {
-        const file: DocumentFile = {
-          ...doc,
-          id: uuid(),
-          uploadedAt: new Date().toISOString(),
-        };
-        set((s) => ({
-          units: s.units.map((u) =>
-            u.id === unitId ? { ...u, documents: [...u.documents, file] } : u,
-          ),
-        }));
-        if (doc.dataUrl) void idbSet(docKey(unitId, file.id), doc.dataUrl);
-      },
-    }),
-    {
-      name: 'rems-storage-v3',
-      skipHydration: true,
-      storage: createJSONStorage(() => createSyncedStorage()),
-      partialize: (s) => ({
-        users: s.users,
-        currentUserId: s.currentUserId,
-        projects: s.projects,
-        units: s.units.map((u) => ({
-          ...u,
-          documents: u.documents.map((d) => ({ ...d, dataUrl: '' })),
-        })),
-        plots: s.plots,
-        tasks: s.tasks,
-        media: s.media.map((m) => ({ ...m, dataUrl: '' })),
-        updates: s.updates,
-        expenses: s.expenses.map((e) => ({
-          ...e,
-          receiptDataUrl: undefined,
-        })),
-        notifications: s.notifications,
-        auditLog: s.auditLog,
-        reports: s.reports,
-        selectedProjectId: s.selectedProjectId,
-      }),
-    },
-  ),
-);
+  addAttendance: async (a) => {
+    const res = await api.post<{ attendance: AttendanceRecord }>('/api/attendance', a);
+    set((s) => ({ attendance: [res.attendance, ...s.attendance] }));
+    return res.attendance.id;
+  },
+
+  deleteAttendance: async (id) => {
+    await api.delete(`/api/attendance/${id}`);
+    set((s) => ({ attendance: s.attendance.filter((x) => x.id !== id) }));
+  },
+
+  addClientPayment: async (p) => {
+    const res = await api.post<{ payment: ClientPayment; unit: Unit }>('/api/payments', p);
+    set((s) => ({
+      clientPayments: [res.payment, ...s.clientPayments],
+      units: res.unit ? replaceUnit(s.units, res.unit) : s.units,
+    }));
+  },
+}));
 
 export function usePermission() {
   const user = useAppStore((s) => s.users.find((u) => u.id === s.currentUserId));
   const role: UserRole | null = user?.role ?? null;
-
-  const can = (action: string) => {
-    if (!role) return false;
-    if (role === 'admin') return true;
-    const managerAllowed = [
-      'view_projects',
-      'view_units',
-      'update_progress',
-      'upload_media',
-      'add_comments',
-      'add_expenses',
-      'submit_reports',
-      'view_construction',
-      'view_gallery',
-      'update_rent_if_authorized',
-    ];
-    const accountantAllowed = [
-      'view_projects',
-      'view_units',
-      'view_payments',
-      'view_rent',
-      'view_sales',
-      'add_expenses',
-      'update_expenses',
-      'view_reports',
-      'view_financials',
-    ];
-    if (role === 'manager') return managerAllowed.includes(action);
-    if (role === 'accountant') return accountantAllowed.includes(action);
-    return false;
+  const can = (action: Capability | string) => hasCapability(role, action as Capability);
+  return {
+    user,
+    role,
+    can,
+    isAdmin: role === 'admin',
+    isManager: role === 'manager',
+    isAccountant: role === 'accountant',
   };
-
-  return { user, role, can, isAdmin: role === 'admin', isManager: role === 'manager' };
 }
 
-export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
-  'Cement',
-  'Steel',
-  'Bricks',
-  'Sand',
-  'Labour',
-  'Electrical',
-  'Plumbing',
-  'Paint',
-  'Flooring',
-  'Machinery',
-  'Transportation',
-  'Parking',
-  'Decoration',
-  'Grey Structure',
-  'Other Expenses',
-];
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [...CATALOG_EXPENSE_CATEGORIES];

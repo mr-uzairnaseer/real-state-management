@@ -16,7 +16,8 @@ import {
 } from '@/components/ui';
 
 export default function LandPage() {
-  const { isAdmin } = usePermission();
+  const { can } = usePermission();
+  const canManage = can('manage_projects');
   const plots = useAppStore((s) => s.plots);
   const projects = useAppStore((s) => s.projects);
   const selectedProjectId = useAppStore((s) => s.selectedProjectId);
@@ -105,7 +106,7 @@ export default function LandPage() {
         title="Land / Open Plot Management"
         subtitle="Empty land sold without construction — marked SOLD – LAND ONLY"
         actions={
-          isAdmin && (
+          canManage && (
             <Button
               onClick={() => {
                 setEditId(null);
@@ -164,7 +165,7 @@ export default function LandPage() {
                 {p.status === 'sold_land_only' ? 'SOLD – LAND ONLY' : statusLabel(p.status)}
               </Badge>
             ),
-            actions: isAdmin ? (
+            actions: canManage ? (
               <div style={{ display: 'flex', gap: 6 }}>
                 <Button
                   size="sm"

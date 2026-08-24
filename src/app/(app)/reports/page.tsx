@@ -1,21 +1,30 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, usePermission } from '@/store/useAppStore';
 import {
   calculateProjectProgress,
   countByStatus,
   formatPKR,
   statusLabel,
+  isSameDay,
+  formatDate,
 } from '@/lib/calculations';
 import { exportToExcel, exportToPdf } from '@/lib/export';
 import { Button, Card, PageHeader, ProgressBar, Stat } from '@/components/ui';
 
 export default function ReportsPage() {
+  const { can } = usePermission();
+  const site = can('view_site_reports');
+  const finance = can('view_financial_reports');
+
   const projects = useAppStore((s) => s.projects);
   const units = useAppStore((s) => s.units);
   const tasks = useAppStore((s) => s.tasks);
   const expenses = useAppStore((s) => s.expenses);
+  const purchases = useAppStore((s) => s.purchases ?? []);
+  const attendance = useAppStore((s) => s.attendance ?? []);
+  const updates = useAppStore((s) => s.updates);
   const reports = useAppStore((s) => s.reports);
   const selectedProjectId = useAppStore((s) => s.selectedProjectId);
 
@@ -25,6 +34,9 @@ export default function ReportsPage() {
   const scopedIds = new Set(scopedProjects.map((p) => p.id));
   const scopedUnits = units.filter((u) => scopedIds.has(u.projectId));
   const scopedExpenses = expenses.filter((e) => scopedIds.has(e.projectId));
+  const scopedPurchases = purchases.filter((p) => scopedIds.has(p.projectId));
+  const scopedAttendance = attendance.filter((a) => scopedIds.has(a.projectId));
+  const scopedUpdates = updates.filter((u) => scopedIds.has(u.projectId));
 
   const counts = countByStatus(scopedUnits);
   const sales = scopedUnits.reduce((s, u) => s + (u.sale?.amountReceived ?? 0), 0);
@@ -58,38 +70,127 @@ export default function ReportsPage() {
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [scopedUnits]);
 
-  const exportInventoryExcel = () => {
-    exportToExcel('shop-inventory', [
+  const exportDailyExpense = () => {
+    const today = new Date().toISOString();
+    exportToExcel('daily-expense', [
       {
-        name: 'Inventory',
+        name: 'Expenses',
+        rows: scopedExpenses
+          .filter((e) => isSameDay(e.date))
+          .map((e) => ({
+            Date: e.date.slice(0, 10),
+            Category: e.category,
+            Amount: e.amount,
+            Description: e.description,
+            AddedBy: e.addedByName,
+          })),
+      },
+    ]);
+  };
+
+  const exportMonthlyExpense = () => {
+    exportToExcel('monthly-expense', [
+      {
+        name: 'By month',
+        rows: monthlyExpenses.map(([month, amount]) => ({ Month: month, Amount: amount })),
+      },
+    ]);
+  };
+
+  const exportUnitExpense = () => {
+    exportToExcel('unit-expense', [
+      {
+        name: 'By unit',
         rows: scopedUnits.map((u) => ({
           Unit: u.number,
-          Project: projects.find((p) => p.id === u.projectId)?.name ?? '',
-          Floor: u.floor,
-          Size: u.size,
-          Status: statusLabel(u.status),
-          Progress: u.constructionProgress,
-          SalePrice: u.salePrice,
-          RentalPrice: u.rentalPrice,
+          Expenses: scopedExpenses
+            .filter((e) => e.unitId === u.id)
+            .reduce((s, e) => s + e.amount, 0),
         })),
       },
     ]);
   };
 
-  const exportExpensesExcel = () => {
-    exportToExcel('construction-expenses', [
+  const exportClientPayments = () => {
+    exportToExcel('client-payments', [
       {
-        name: 'Expenses',
-        rows: scopedExpenses.map((e) => ({
-          Date: e.date.slice(0, 10),
-          Category: e.category,
-          Amount: e.amount,
-          Project: projects.find((p) => p.id === e.projectId)?.name ?? '',
-          Description: e.description,
-          AddedBy: e.addedByName,
+        name: 'Sales',
+        rows: scopedUnits
+          .filter((u) => u.sale)
+          .map((u) => ({
+            Unit: u.number,
+            Buyer: u.sale?.buyer.name ?? '',
+            SalePrice: u.sale?.salePrice ?? 0,
+            Received: u.sale?.amountReceived ?? 0,
+            Remaining: u.sale?.remainingAmount ?? 0,
+          })),
+      },
+    ]);
+  };
+
+  const exportPendingPayments = () => {
+    exportToPdf(
+      'Pending Payment Report',
+      ['Unit', 'Client', 'Total', 'Received', 'Pending'],
+      scopedUnits
+        .filter((u) => (u.sale?.remainingAmount ?? 0) > 0)
+        .map((u) => [
+          u.number,
+          u.sale?.buyer.name ?? '',
+          u.sale?.salePrice ?? 0,
+          u.sale?.amountReceived ?? 0,
+          u.sale?.remainingAmount ?? 0,
+        ]),
+      'pending-payments',
+    );
+  };
+
+  const exportPurchases = () => {
+    exportToExcel('material-purchase-report', [
+      {
+        name: 'Purchases',
+        rows: scopedPurchases.map((p) => ({
+          Date: p.date.slice(0, 10),
+          Item: p.item,
+          Qty: p.quantity,
+          UnitPrice: p.unitPrice,
+          Total: p.totalAmount,
+          Supplier: p.supplier,
+          Unit: units.find((u) => u.id === p.unitId)?.number ?? 'Common',
         })),
       },
     ]);
+  };
+
+  const exportAttendance = () => {
+    exportToExcel('worker-attendance-report', [
+      {
+        name: 'Attendance',
+        rows: scopedAttendance.map((a) => ({
+          Date: a.date.slice(0, 10),
+          Category: a.category,
+          Total: a.totalWorkers,
+          Present: a.present,
+          Absent: a.absent,
+          Remarks: a.remarks,
+        })),
+      },
+    ]);
+  };
+
+  const exportUnitCompletion = () => {
+    exportToPdf(
+      'Unit Completion Report',
+      ['Unit', 'Type', 'Progress %', 'Status', 'Remaining %'],
+      scopedUnits.map((u) => [
+        u.number,
+        u.type,
+        u.constructionProgress,
+        statusLabel(u.status),
+        Math.max(0, Math.round(100 - u.constructionProgress)),
+      ]),
+      'unit-completion',
+    );
   };
 
   const exportProgressPdf = () => {
@@ -99,11 +200,47 @@ export default function ReportsPage() {
       scopedProjects.map((p) => [
         p.name,
         calculateProjectProgress(tasks, p.id, units),
-        p.totalBudget,
+        finance ? p.totalBudget : '—',
         statusLabel(p.status),
         units.filter((u) => u.projectId === p.id).length,
       ]),
       'project-progress',
+    );
+  };
+
+  const exportDailySite = () => {
+    exportToPdf(
+      'Daily Site Report',
+      ['Time', 'Unit', 'Note'],
+      scopedUpdates
+        .filter((u) => isSameDay(u.createdAt))
+        .map((u) => [
+          formatDate(u.createdAt),
+          units.find((x) => x.id === u.unitId)?.number ?? '—',
+          u.note,
+        ]),
+      'daily-site',
+    );
+  };
+
+  const exportOverall = () => {
+    exportToPdf(
+      'Overall Project Report',
+      ['Metric', 'Value'],
+      [
+        ['Units', scopedUnits.length],
+        ['Sold', counts.sold],
+        ['Rented', counts.rented],
+        ...(finance
+          ? [
+              ['Sales received (PKR)', sales],
+              ['Pending (PKR)', pendingPayments],
+              ['Expenses (PKR)', expenseTotal],
+              ['Purchases (PKR)', scopedPurchases.reduce((s, p) => s + p.totalAmount, 0)],
+            ]
+          : []),
+      ],
+      'overall-project-report',
     );
   };
 
@@ -125,95 +262,154 @@ export default function ReportsPage() {
   return (
     <div>
       <PageHeader
-        title="Reports & Analytics"
-        subtitle="Dashboard views with PDF / Excel export"
+        title="Reports"
+        subtitle={
+          site && finance
+            ? 'Site and finance exports'
+            : site
+              ? 'Site progress, attendance, and daily logs'
+              : 'Sales, expenses, and receivables'
+        }
         actions={
           <>
-            <Button variant="secondary" onClick={exportInventoryExcel}>
-              Export Inventory Excel
-            </Button>
-            <Button variant="secondary" onClick={exportExpensesExcel}>
-              Export Expenses Excel
-            </Button>
-            <Button variant="secondary" onClick={exportProgressPdf}>
-              Progress PDF
-            </Button>
-            <Button onClick={exportFinancialPdf}>Financial PDF</Button>
+            {site && (
+              <>
+                <Button variant="secondary" onClick={exportDailySite}>
+                  Daily site PDF
+                </Button>
+                <Button variant="secondary" onClick={exportDailyExpense}>
+                  Daily expense Excel
+                </Button>
+                <Button variant="secondary" onClick={exportProgressPdf}>
+                  Progress PDF
+                </Button>
+                <Button variant="secondary" onClick={exportAttendance}>
+                  Attendance Excel
+                </Button>
+                <Button variant="secondary" onClick={exportUnitCompletion}>
+                  Unit completion PDF
+                </Button>
+                <Button variant="secondary" onClick={exportPurchases}>
+                  Purchases Excel
+                </Button>
+              </>
+            )}
+            {finance && (
+              <>
+                <Button variant="secondary" onClick={exportMonthlyExpense}>
+                  Monthly expense Excel
+                </Button>
+                <Button variant="secondary" onClick={exportUnitExpense}>
+                  Unit expense Excel
+                </Button>
+                <Button variant="secondary" onClick={exportClientPayments}>
+                  Client payments Excel
+                </Button>
+                <Button variant="secondary" onClick={exportPendingPayments}>
+                  Pending payments PDF
+                </Button>
+                <Button variant="secondary" onClick={exportPurchases}>
+                  Purchases Excel
+                </Button>
+                <Button variant="secondary" onClick={exportOverall}>
+                  Overall PDF
+                </Button>
+                <Button onClick={exportFinancialPdf}>Financial PDF</Button>
+              </>
+            )}
           </>
         }
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
-        <Stat label="Sales" value={formatPKR(sales)} tone="green" />
-        <Stat label="Rent" value={formatPKR(rent)} tone="blue" />
-        <Stat label="Pending" value={formatPKR(pendingPayments)} tone="orange" />
-        <Stat label="Expenses" value={formatPKR(expenseTotal)} />
-        <Stat label="Profit" value={formatPKR(profit)} tone="green" />
+        {finance ? (
+          <>
+            <Stat label="Sales" value={formatPKR(sales)} tone="green" />
+            <Stat label="Rent" value={formatPKR(rent)} tone="blue" />
+            <Stat label="Pending" value={formatPKR(pendingPayments)} tone="orange" />
+            <Stat label="Expenses" value={formatPKR(expenseTotal)} />
+            <Stat label="Profit" value={formatPKR(profit)} tone="green" />
+          </>
+        ) : (
+          <>
+            <Stat label="Units" value={scopedUnits.length} />
+            <Stat label="Avg progress" value={`${Math.round(scopedUnits.reduce((s, u) => s + u.constructionProgress, 0) / Math.max(1, scopedUnits.length))}%`} tone="blue" />
+            <Stat label="Site expenses today" value={formatPKR(scopedExpenses.filter((e) => isSameDay(e.date)).reduce((s, e) => s + e.amount, 0))} />
+          </>
+        )}
         <Stat label="Sold" value={counts.sold} />
         <Stat label="Rented" value={counts.rented} />
         <Stat label="Available" value={counts.available} />
       </div>
 
       <div className="resp-2col" style={{ marginTop: 16 }}>
-        <Card title="Project Progress">
-          {scopedProjects.map((p) => {
-            const pct = calculateProjectProgress(tasks, p.id, units);
-            return (
-              <div key={p.id} style={{ marginBottom: 14 }}>
-                <ProgressBar value={pct} label={p.name} />
+        {site && (
+          <Card title="Project progress">
+            {scopedProjects.map((p) => {
+              const pct = calculateProjectProgress(tasks, p.id, units);
+              return (
+                <div key={p.id} style={{ marginBottom: 14 }}>
+                  <ProgressBar value={pct} label={p.name} />
+                </div>
+              );
+            })}
+          </Card>
+        )}
+
+        {finance && (
+          <>
+            <Card title="Monthly expenses">
+              {monthlyExpenses.length === 0 && <p style={{ color: 'var(--text-tertiary)' }}>No data</p>}
+              {monthlyExpenses.map(([month, amount]) => (
+                <div
+                  key={month}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '8px 0',
+                    borderBottom: '1px solid var(--border-color)',
+                    fontSize: 13,
+                  }}
+                >
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>{month}</span>
+                  <strong>{formatPKR(amount)}</strong>
+                </div>
+              ))}
+            </Card>
+
+            <Card title="Monthly rental collection">
+              {monthlyRent.length === 0 && <p style={{ color: 'var(--text-tertiary)' }}>No data</p>}
+              {monthlyRent.map(([month, amount]) => (
+                <div
+                  key={month}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '8px 0',
+                    borderBottom: '1px solid var(--border-color)',
+                    fontSize: 13,
+                  }}
+                >
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>{month}</span>
+                  <strong>{formatPKR(amount)}</strong>
+                </div>
+              ))}
+            </Card>
+          </>
+        )}
+
+        {site && (
+          <Card title="Site reports">
+            {reports.length === 0 && <p style={{ color: 'var(--text-tertiary)' }}>No reports</p>}
+            {reports.slice(0, 8).map((r) => (
+              <div key={r.id} style={{ marginBottom: 12, fontSize: 13 }}>
+                <strong>{r.managerName}</strong> — {r.title}
+                <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{r.period}</div>
+                <p style={{ color: 'var(--text-secondary)' }}>Done: {r.completedWork}</p>
               </div>
-            );
-          })}
-        </Card>
-
-        <Card title="Monthly Expenses">
-          {monthlyExpenses.length === 0 && <p style={{ color: 'var(--text-tertiary)' }}>No data</p>}
-          {monthlyExpenses.map(([month, amount]) => (
-            <div
-              key={month}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '8px 0',
-                borderBottom: '1px solid var(--border-color)',
-                fontSize: 13,
-              }}
-            >
-              <span style={{ fontFamily: 'var(--font-mono)' }}>{month}</span>
-              <strong>{formatPKR(amount)}</strong>
-            </div>
-          ))}
-        </Card>
-
-        <Card title="Monthly Rental Collection">
-          {monthlyRent.length === 0 && <p style={{ color: 'var(--text-tertiary)' }}>No data</p>}
-          {monthlyRent.map(([month, amount]) => (
-            <div
-              key={month}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '8px 0',
-                borderBottom: '1px solid var(--border-color)',
-                fontSize: 13,
-              }}
-            >
-              <span style={{ fontFamily: 'var(--font-mono)' }}>{month}</span>
-              <strong>{formatPKR(amount)}</strong>
-            </div>
-          ))}
-        </Card>
-
-        <Card title="Manager Performance">
-          {reports.length === 0 && <p style={{ color: 'var(--text-tertiary)' }}>No reports</p>}
-          {reports.slice(0, 8).map((r) => (
-            <div key={r.id} style={{ marginBottom: 12, fontSize: 13 }}>
-              <strong>{r.managerName}</strong> — {r.title}
-              <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{r.period}</div>
-              <p style={{ color: 'var(--text-secondary)' }}>Done: {r.completedWork}</p>
-            </div>
-          ))}
-        </Card>
+            ))}
+          </Card>
+        )}
       </div>
     </div>
   );

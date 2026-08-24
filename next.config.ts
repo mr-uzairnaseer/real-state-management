@@ -7,10 +7,11 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  // Vercel serves the standard Next.js build — no custom server needed
   experimental: {
     optimizePackageImports: ['@tabler/icons-react', 'date-fns'],
   },
+  // Allow larger media uploads through API routes
+  serverExternalPackages: ['@prisma/client', 'bcryptjs'],
 };
 
 export default nextConfig;

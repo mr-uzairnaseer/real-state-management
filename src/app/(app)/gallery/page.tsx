@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { useAppStore, usePermission } from '@/store/useAppStore';
 import { formatDateTime } from '@/lib/calculations';
 import { Badge, Button, Card, PageHeader, Select } from '@/components/ui';
+import { ClusterTabs } from '@/components/layout/ClusterTabs';
+import { CONSTRUCTION_TABS } from '@/lib/access';
 
 export default function GalleryPage() {
-  const { isAdmin } = usePermission();
+  const { can } = usePermission();
   const media = useAppStore((s) => s.media);
   const units = useAppStore((s) => s.units);
   const projects = useAppStore((s) => s.projects);
@@ -27,9 +29,10 @@ export default function GalleryPage() {
 
   return (
     <div>
+      <ClusterTabs items={CONSTRUCTION_TABS} />
       <PageHeader
-        title="Picture Gallery & Progress Evidence"
-        subtitle="Chronological before → during → completed history"
+        title="Progress photos"
+        subtitle="Before / during / completed evidence linked to units and stages"
         actions={
           <Select value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="all">All kinds</option>
@@ -84,7 +87,7 @@ export default function GalleryPage() {
                 <br />
                 {m.managerName}
               </div>
-              {isAdmin && (
+              {can('delete_financials') && (
                 <Button
                   size="sm"
                   variant="danger"

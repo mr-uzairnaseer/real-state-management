@@ -21,10 +21,12 @@ import {
   Stat,
 } from '@/components/ui';
 import { unitTone } from '@/lib/helpers';
-import type { UnitStatus } from '@/lib/types';
+import type { UnitStatus, UnitType } from '@/lib/types';
+import { UNIT_TYPES, UNIT_STATUSES } from '@/lib/catalog';
 
 export default function UnitsPage() {
-  const { isAdmin, isManager } = usePermission();
+  const { can } = usePermission();
+  const showPrices = can('view_financials') || can('edit_unit_prices');
   const units = useAppStore((s) => s.units);
   const projects = useAppStore((s) => s.projects);
   const selectedProjectId = useAppStore((s) => s.selectedProjectId);
@@ -57,10 +59,10 @@ export default function UnitsPage() {
 
   const submit = () => {
     if (!form.number || !form.projectId) return;
-    createUnit({
+    void createUnit({
       projectId: form.projectId,
       number: form.number,
-      type: form.type as 'shop',
+      type: form.type as UnitType,
       size: form.size,
       floor: form.floor,
       salePrice: Number(form.salePrice) || 0,
@@ -74,10 +76,10 @@ export default function UnitsPage() {
   return (
     <div>
       <PageHeader
-        title="Shop / Unit Inventory"
-        subtitle="Sold, rented, available, reserved, under construction — auto-updating counts"
+        title="Units / shops"
+        subtitle="Inventory by status · open a unit for progress, media, and client records"
         actions={
-          (isAdmin || isManager) && (
+          can('manage_units') && (
             <Button onClick={() => setOpen(true)}>Add unit</Button>
           )
         }
@@ -98,6 +100,7 @@ export default function UnitsPage() {
         <Stat label="Under Construction" value={counts.under_construction} tone="orange" />
         <Stat label="Reserved" value={counts.reserved} tone="orange" />
         <Stat label="Booked" value={counts.booked} />
+        <Stat label="Completed" value={counts.completed} tone="green" />
       </div>
 
       <Card
@@ -114,6 +117,7 @@ export default function UnitsPage() {
             <option value="reserved">Reserved</option>
             <option value="booked">Booked</option>
             <option value="under_construction">Under Construction</option>
+            <option value="completed">Completed</option>
           </Select>
         }
       >
@@ -125,7 +129,7 @@ export default function UnitsPage() {
             { key: 'size', label: 'Size' },
             { key: 'status', label: 'Status' },
             { key: 'progress', label: 'Progress' },
-            { key: 'price', label: 'Sale / Rent' },
+            ...(showPrices ? [{ key: 'price', label: 'Sale / Rent' }] : []),
             { key: 'actions', label: '' },
           ]}
           rows={list.map((u) => ({
@@ -139,16 +143,20 @@ export default function UnitsPage() {
             size: u.size,
             status: <Badge tone={unitTone(u.status)}>{statusLabel(u.status)}</Badge>,
             progress: <ProgressBar value={u.constructionProgress} showValue />,
-            price: (
-              <span>
-                {formatPKR(u.salePrice)}
-                <br />
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>
-                  Rent {formatPKR(u.rentalPrice)}
-                </span>
-              </span>
-            ),
-            actions: isAdmin ? (
+            ...(showPrices
+              ? {
+                  price: (
+                    <span>
+                      {formatPKR(u.salePrice)}
+                      <br />
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>
+                        Rent {formatPKR(u.rentalPrice)}
+                      </span>
+                    </span>
+                  ),
+                }
+              : {}),
+            actions: can('manage_units') ? (
               <Button
                 size="sm"
                 variant="danger"
@@ -187,11 +195,9 @@ export default function UnitsPage() {
             value={form.type}
             onChange={(e) => setForm({ ...form, type: e.target.value })}
           >
-            <option value="shop">Shop</option>
-            <option value="apartment">Apartment</option>
-            <option value="office">Office</option>
-            <option value="plot">Plot</option>
-            <option value="other">Other</option>
+            {UNIT_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
           </Select>
           <Input label="Size" value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })} />
           <Input label="Floor" value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })} />
@@ -202,12 +208,9 @@ export default function UnitsPage() {
             value={form.status}
             onChange={(e) => setForm({ ...form, status: e.target.value as UnitStatus })}
           >
-            <option value="available">Available</option>
-            <option value="under_construction">Under Construction</option>
-            <option value="reserved">Reserved</option>
-            <option value="booked">Booked</option>
-            <option value="sold">Sold</option>
-            <option value="rented">Rented</option>
+            {UNIT_STATUSES.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
           </Select>
           <Button onClick={submit}>Create unit</Button>
         </div>

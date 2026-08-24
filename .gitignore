@@ -38,3 +38,8 @@ next-env.d.ts
 
 # vercel
 .vercel
+
+# uploads & env
+/uploads
+.env
+.env.local

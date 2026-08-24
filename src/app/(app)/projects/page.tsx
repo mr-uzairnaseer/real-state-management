@@ -24,7 +24,8 @@ import {
 import styles from './projects.module.css';
 
 export default function ProjectsPage() {
-  const { user, isAdmin, isManager } = usePermission();
+  const { user, can, isManager, isAdmin } = usePermission();
+  const showMoney = can('view_financials');
   const projects = useAppStore((s) => s.projects);
   const units = useAppStore((s) => s.units);
   const tasks = useAppStore((s) => s.tasks);
@@ -51,9 +52,9 @@ export default function ProjectsPage() {
     return projects;
   }, [projects, isAdmin, isManager, user]);
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.name.trim()) return;
-    const id = createProject({
+    const id = await createProject({
       name: form.name.trim(),
       type: form.type,
       location: form.location,
@@ -77,10 +78,14 @@ export default function ProjectsPage() {
     <div>
       <PageHeader
         title="Projects"
-        subtitle="Manage multiple real-estate and construction projects"
+        subtitle={
+          isManager
+            ? 'Your assigned sites — switch project then use Daily log / Progress'
+            : 'Portfolios, budgets, and per-project dashboards'
+        }
         actions={
-          isAdmin ? (
-            <Button onClick={() => setOpen(true)}>New Project</Button>
+          can('manage_projects') ? (
+            <Button onClick={() => setOpen(true)}>New project</Button>
           ) : undefined
         }
       />
@@ -123,18 +128,27 @@ export default function ProjectsPage() {
               </div>
               <ProgressBar value={pct} label="Overall completion" />
               <div className={styles.stats}>
-                <div>
-                  <span>Budget</span>
-                  <strong>{formatPKR(p.totalBudget)}</strong>
-                </div>
-                <div>
-                  <span>Expenses</span>
-                  <strong>{formatPKR(spent)}</strong>
-                </div>
-                <div>
-                  <span>Revenue</span>
-                  <strong>{formatPKR(revenue)}</strong>
-                </div>
+                {showMoney ? (
+                  <>
+                    <div>
+                      <span>Budget</span>
+                      <strong>{formatPKR(p.totalBudget)}</strong>
+                    </div>
+                    <div>
+                      <span>Expenses</span>
+                      <strong>{formatPKR(spent)}</strong>
+                    </div>
+                    <div>
+                      <span>Revenue</span>
+                      <strong>{formatPKR(revenue)}</strong>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <span>Progress</span>
+                    <strong>{pct}%</strong>
+                  </div>
+                )}
                 <div>
                   <span>Units</span>
                   <strong>
@@ -151,9 +165,9 @@ export default function ProjectsPage() {
                   Switch to project
                 </Button>
                 <Link href={`/projects/${p.id}`}>
-                  <Button size="sm">Open dashboard</Button>
+                  <Button size="sm">Open</Button>
                 </Link>
-                {isAdmin && (
+                {can('manage_projects') && (
                   <Button
                     variant="danger"
                     size="sm"

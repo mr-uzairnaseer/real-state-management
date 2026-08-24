@@ -15,7 +15,7 @@ import {
 import type { UserRole } from '@/lib/types';
 
 export default function UsersPage() {
-  const { isAdmin } = usePermission();
+  const { can } = usePermission();
   const users = useAppStore((s) => s.users);
   const projects = useAppStore((s) => s.projects);
   const createUser = useAppStore((s) => s.createUser);
@@ -33,11 +33,11 @@ export default function UsersPage() {
     avatarColor: '#3e63dd',
   });
 
-  if (!isAdmin) {
+  if (!can('manage_users')) {
     return (
       <div>
         <PageHeader title="Users & Roles" />
-        <Card title="Restricted">Only Main Admin can manage users.</Card>
+        <Card title="Restricted">Only the project owner can manage users.</Card>
       </div>
     );
   }

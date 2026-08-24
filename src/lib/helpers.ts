@@ -15,6 +15,8 @@ export function unitTone(
       return 'yellow';
     case 'booked':
       return 'purple';
+    case 'completed':
+      return 'green';
     case 'under_construction':
       return 'orange';
     default:

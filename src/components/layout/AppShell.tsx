@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import type { ComponentType } from 'react';
 import {
   IconLayoutDashboard,
   IconBuildingSkyscraper,
@@ -25,30 +26,37 @@ import {
   IconClipboardList,
   IconMenu2,
   IconX,
+  IconShoppingCart,
+  IconUsersGroup,
+  IconRoad,
 } from '@tabler/icons-react';
 import { useAppStore, usePermission } from '@/store/useAppStore';
 import { calculateProjectProgress } from '@/lib/calculations';
+import { ROLE_LABEL, visibleNav, type NavIcon } from '@/lib/access';
+import { RouteGuard } from './RouteGuard';
 import styles from './shell.module.css';
 
-const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: IconLayoutDashboard, roles: ['admin', 'manager', 'accountant'] },
-  { href: '/projects', label: 'Projects', icon: IconBuildingSkyscraper, roles: ['admin', 'manager', 'accountant'] },
-  { href: '/units', label: 'Units / Shops', icon: IconHome, roles: ['admin', 'manager', 'accountant'] },
-  { href: '/construction', label: 'Construction', icon: IconHammer, roles: ['admin', 'manager'] },
-  { href: '/grey-structure', label: 'Grey Structure', icon: IconWall, roles: ['admin', 'manager'] },
-  { href: '/land', label: 'Land / Plots', icon: IconMap, roles: ['admin', 'manager', 'accountant'] },
-  { href: '/expenses', label: 'Expenses', icon: IconReceipt, roles: ['admin', 'manager', 'accountant'] },
-  { href: '/sales', label: 'Sales', icon: IconCash, roles: ['admin', 'accountant'] },
-  { href: '/rentals', label: 'Rentals', icon: IconKey, roles: ['admin', 'manager', 'accountant'] },
-  { href: '/bookings', label: 'Bookings', icon: IconBookmark, roles: ['admin', 'manager', 'accountant'] },
-  { href: '/gallery', label: 'Gallery', icon: IconPhoto, roles: ['admin', 'manager'] },
-  { href: '/reports', label: 'Reports', icon: IconChartBar, roles: ['admin', 'accountant'] },
-  { href: '/manager', label: 'Manager Portal', icon: IconClipboardList, roles: ['admin', 'manager'] },
-  { href: '/notifications', label: 'Notifications', icon: IconBell, roles: ['admin', 'manager', 'accountant'] },
-  { href: '/users', label: 'Users & Roles', icon: IconUsers, roles: ['admin'] },
-  { href: '/audit', label: 'Audit Log', icon: IconHistory, roles: ['admin'] },
-  { href: '/settings', label: 'Settings', icon: IconSettings, roles: ['admin'] },
-];
+const ICONS: Record<NavIcon, ComponentType<{ size?: number; stroke?: number }>> = {
+  dashboard: IconLayoutDashboard,
+  projects: IconBuildingSkyscraper,
+  units: IconHome,
+  areas: IconRoad,
+  land: IconMap,
+  construction: IconHammer,
+  grey: IconWall,
+  photos: IconPhoto,
+  log: IconClipboardList,
+  attendance: IconUsersGroup,
+  purchases: IconShoppingCart,
+  expenses: IconReceipt,
+  sales: IconCash,
+  rentals: IconKey,
+  bookings: IconBookmark,
+  reports: IconChartBar,
+  users: IconUsers,
+  audit: IconHistory,
+  settings: IconSettings,
+};
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -63,6 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const notifications = useAppStore((s) => s.notifications);
   const unread = notifications.filter((n) => !n.read).length;
   const [menuOpen, setMenuOpen] = useState(false);
+  const groups = visibleNav(role);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -86,11 +95,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ? projects
       : projects.filter((p) => user?.assignedProjectIds.includes(p.id));
 
-  const nav = NAV.filter((n) => role && n.roles.includes(role));
+  useEffect(() => {
+    if (role !== 'manager' || !visibleProjects.length) return;
+    if (!selectedProjectId || !visibleProjects.some((p) => p.id === selectedProjectId)) {
+      setSelectedProject(visibleProjects[0].id);
+    }
+  }, [role, visibleProjects, selectedProjectId, setSelectedProject]);
 
   const handleLogout = () => {
-    logout();
-    router.replace('/login');
+    void logout().then(() => router.replace('/login'));
   };
 
   return (
@@ -109,7 +122,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className={styles.brandMark}>RE</div>
           <div>
             <div className={styles.brandName}>Estate Progress</div>
-            <div className={styles.brandTag}>Project Management</div>
+            <div className={styles.brandTag}>{role ? ROLE_LABEL[role] : 'Workspace'}</div>
           </div>
           <button
             type="button"
@@ -122,24 +135,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className={styles.nav}>
-          {nav.map((item) => {
-            const Icon = item.icon;
-            const active = pathname === item.href || pathname.startsWith(item.href + '/');
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`${styles.navItem} ${active ? styles.navItemActive : ''}`}
-                onClick={() => setMenuOpen(false)}
-              >
-                <Icon size={18} stroke={1.5} />
-                <span>{item.label}</span>
-                {item.href === '/notifications' && unread > 0 && (
-                  <span className={styles.navBadge}>{unread}</span>
-                )}
-              </Link>
-            );
-          })}
+          {groups.map((group) => (
+            <div key={group.id} className={styles.navGroup}>
+              <div className={styles.navGroupLabel}>{group.label}</div>
+              {group.items.map((item) => {
+                const Icon = ICONS[item.icon];
+                const active = pathname === item.href || pathname.startsWith(item.href + '/');
+                return (
+                  <Link
+                    key={`${group.id}-${item.href}`}
+                    href={item.href}
+                    className={`${styles.navItem} ${active ? styles.navItemActive : ''}`}
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <Icon size={18} stroke={1.5} />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className={styles.sidebarFooter}>
@@ -152,7 +167,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
             <div className={styles.userMeta}>
               <div className={styles.userName}>{user?.name}</div>
-              <div className={styles.userRole}>{role}</div>
+              <div className={styles.userRole}>{role ? ROLE_LABEL[role] : ''}</div>
             </div>
           </div>
           <button type="button" className={styles.logoutBtn} onClick={handleLogout}>
@@ -180,7 +195,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 value={selectedProjectId ?? ''}
                 onChange={(e) => setSelectedProject(e.target.value || null)}
               >
-                <option value="">All projects</option>
+                {role === 'manager' ? null : <option value="">All projects</option>}
                 {visibleProjects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} — {calculateProjectProgress(tasks, p.id, units)}%
@@ -196,11 +211,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
             <div className={styles.rolePill}>
               <IconUserCircle size={16} stroke={1.5} />
-              <span className={styles.roleText}>{role === 'admin' ? 'Main Admin' : role}</span>
+              <span className={styles.roleText}>{role ? ROLE_LABEL[role] : ''}</span>
             </div>
           </div>
         </header>
-        <main className={styles.content}>{children}</main>
+        <main className={styles.content}>
+          <RouteGuard>{children}</RouteGuard>
+        </main>
       </div>
     </div>
   );

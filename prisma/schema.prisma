@@ -1,0 +1,264 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  name               String
+  email              String   @unique
+  passwordHash       String
+  role               String
+  assignedProjectIds String[] @default([])
+  avatarColor        String   @default("#3e63dd")
+  createdAt          DateTime @default(now())
+}
+
+model Project {
+  id              String   @id @default(cuid())
+  name            String
+  type            String
+  description     String   @default("")
+  location        String   @default("")
+  status          String   @default("planning")
+  totalBudget     Float    @default(0)
+  startDate       DateTime @default(now())
+  expectedEndDate DateTime?
+  managerIds      String[] @default([])
+  stageTemplates  Json     @default("[]")
+  greyStructure   Json
+  timelineNotes   String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  units           Unit[]
+  plots           Plot[]
+  tasks           ConstructionTask[]
+  media           MediaItem[]
+  updates         ProgressUpdate[]
+  expenses        Expense[]
+  reports         ManagerReport[]
+  purchases       Purchase[]
+  attendance      Attendance[]
+  clientPayments  ClientPayment[]
+}
+
+model Unit {
+  id                   String   @id @default(cuid())
+  projectId            String
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number               String
+  type                 String   @default("shop")
+  size                 String   @default("")
+  floor                String   @default("")
+  status               String   @default("under_construction")
+  salePrice            Float    @default(0)
+  rentalPrice          Float    @default(0)
+  constructionProgress Float    @default(0)
+  sale                 Json?
+  rental               Json?
+  booking              Json?
+  expenses             Float    @default(0)
+  notes                String   @default("")
+  documents            Json     @default("[]")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  tasks                ConstructionTask[]
+  media                MediaItem[]
+  updates              ProgressUpdate[]
+  expenseRows          Expense[]
+  purchases            Purchase[]
+  clientPayments       ClientPayment[]
+}
+
+model Plot {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  plotNumber       String
+  size             String    @default("")
+  location         String    @default("")
+  salePrice        Float     @default(0)
+  buyerName        String?
+  buyerContact     String?
+  paymentReceived  Float     @default(0)
+  remainingPayment Float     @default(0)
+  saleDate         DateTime?
+  status           String    @default("available")
+  documents        Json      @default("[]")
+  notes            String    @default("")
+  createdAt        DateTime  @default(now())
+}
+
+model ConstructionTask {
+  id                     String    @id @default(cuid())
+  projectId              String
+  project                Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitId                 String?
+  unit                   Unit?     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  name                   String
+  weight                 Float     @default(0)
+  progress               Float     @default(0)
+  startDate              DateTime?
+  expectedCompletionDate DateTime?
+  status                 String    @default("not_started")
+  comments               String    @default("")
+  order                  Int       @default(0)
+}
+
+model MediaItem {
+  id                 String   @id @default(cuid())
+  projectId          String
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitId             String?
+  unit               Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  taskId             String?
+  kind               String
+  /// public URL path e.g. /uploads/xxx.jpg — or data URL for small seeds
+  url                String
+  mimeType           String   @default("image/jpeg")
+  fileName           String   @default("")
+  comment            String   @default("")
+  progressPercentage Float    @default(0)
+  workCategory       String   @default("")
+  managerName        String   @default("")
+  managerId          String   @default("")
+  createdAt          DateTime @default(now())
+}
+
+model ProgressUpdate {
+  id                 String   @id @default(cuid())
+  projectId          String
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitId             String?
+  unit               Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  taskId             String?
+  title              String
+  comment            String   @default("")
+  progressPercentage Float    @default(0)
+  workCategory       String   @default("")
+  managerId          String   @default("")
+  managerName        String   @default("")
+  mediaIds           String[] @default([])
+  createdAt          DateTime @default(now())
+}
+
+model Expense {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitId         String?
+  unit           Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  category       String
+  amount         Float
+  date           DateTime
+  description    String   @default("")
+  receiptUrl     String?
+  receiptName    String?
+  scope          String   @default("unit")
+  paymentMethod  String   @default("cash")
+  remarks        String   @default("")
+  addedById      String
+  addedByName    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Purchase {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitId        String?
+  unit          Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  date          DateTime
+  item          String
+  quantity      Float    @default(1)
+  unitPrice     Float    @default(0)
+  totalAmount   Float
+  supplier      String   @default("")
+  paymentMethod String   @default("cash")
+  billUrl       String?
+  billName      String?
+  remarks       String   @default("")
+  expenseId     String?
+  addedById     String
+  addedByName   String
+  createdAt     DateTime @default(now())
+}
+
+model Attendance {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date        DateTime
+  totalWorkers Int
+  present     Int
+  absent      Int
+  category    String   @default("General labour")
+  remarks     String   @default("")
+  addedById   String
+  addedByName String
+  createdAt   DateTime @default(now())
+}
+
+model ClientPayment {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitId      String
+  unit        Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  amount      Float
+  date        DateTime
+  method      String   @default("cash")
+  remarks     String   @default("")
+  kind        String   @default("sale")
+  addedById   String
+  addedByName String
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  message   String
+  projectId String?
+  unitId    String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditEntry {
+  id            String   @id @default(cuid())
+  userId        String
+  userName      String
+  action        String
+  entityType    String
+  entityId      String
+  field         String?
+  previousValue String?
+  newValue      String?
+  createdAt     DateTime @default(now())
+}
+
+model ManagerReport {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  managerId     String
+  managerName   String
+  period        String
+  title         String
+  completedWork String   @default("")
+  pendingWork   String   @default("")
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+}
+
+model AppMeta {
+  id                 String  @id @default("singleton")
+  selectedProjectId  String?
+}
