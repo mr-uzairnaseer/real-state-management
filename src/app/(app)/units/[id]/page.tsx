@@ -148,7 +148,7 @@ export default function UnitDetailPage() {
             <Row k="Type" v={statusLabel(unit.type)} />
             {showMoney && (
               <>
-                <Row k="Sale / rental value" v={formatPKR(unit.sale?.salePrice ?? unit.salePrice || unit.rentalPrice)} />
+                <Row k="Sale / rental value" v={formatPKR(unit.sale?.salePrice ?? unit.salePrice ?? unit.rentalPrice)} />
                 <Row k="Amount received" v={formatPKR(unit.sale?.amountReceived ?? unit.booking?.advanceAmount ?? 0)} />
                 <Row k="Pending amount" v={formatPKR(unit.sale?.remainingAmount ?? unit.booking?.remainingAmount ?? 0)} />
                 <Row k="Construction expense" v={formatPKR(expenses.filter((e) => e.scope !== 'admin').reduce((s, e) => s + e.amount, 0) || unit.expenses)} />
