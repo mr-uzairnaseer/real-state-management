@@ -128,6 +128,16 @@ export function formatDateTime(iso?: string): string {
   }
 }
 
+/** Humanize status/type codes: under_construction → Under Construction */
+export function statusLabel(value?: string | null): string {
+  if (!value) return '—';
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function clientPayLabel(unit: {
   sale?: { remainingAmount: number; amountReceived: number; paymentStatus?: string } | null;
   booking?: { remainingAmount: number; advanceAmount: number } | null;
