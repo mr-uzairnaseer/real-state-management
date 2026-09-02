@@ -29,6 +29,7 @@ import {
   IconShoppingCart,
   IconUsersGroup,
   IconRoad,
+  IconStack2,
 } from '@tabler/icons-react';
 import { useAppStore, usePermission } from '@/store/useAppStore';
 import { calculateProjectProgress } from '@/lib/calculations';
@@ -48,6 +49,7 @@ const ICONS: Record<NavIcon, ComponentType<{ size?: number; stroke?: number }>> 
   log: IconClipboardList,
   attendance: IconUsersGroup,
   purchases: IconShoppingCart,
+  materials: IconStack2,
   expenses: IconReceipt,
   sales: IconCash,
   rentals: IconKey,

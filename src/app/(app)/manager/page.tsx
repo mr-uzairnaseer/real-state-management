@@ -109,6 +109,7 @@ export default function DailyLogPage() {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
         <Link href="/construction"><Button variant="secondary" size="sm">Update stages</Button></Link>
+        <Link href="/materials"><Button variant="secondary" size="sm">Log material usage</Button></Link>
         <Link href="/attendance"><Button variant="secondary" size="sm">Attendance</Button></Link>
         <Link href="/purchases"><Button variant="secondary" size="sm">Purchases</Button></Link>
         <Link href="/expenses"><Button variant="secondary" size="sm">Expenses</Button></Link>

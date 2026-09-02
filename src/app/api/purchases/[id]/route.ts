@@ -15,6 +15,8 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     if (prev.expenseId) {
       await prisma.expense.delete({ where: { id: prev.expenseId } }).catch(() => undefined);
     }
+    const { deleteDeliveryForPurchase } = await import('@/lib/materials-sync');
+    await deleteDeliveryForPurchase(id);
     await prisma.purchase.delete({ where: { id } });
     if (prev.unitId) await syncUnitExpenseTotal(prev.unitId);
     await writeAudit({

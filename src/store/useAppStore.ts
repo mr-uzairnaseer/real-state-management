@@ -27,6 +27,9 @@ import type {
   ClientPayment,
   Purchase,
   DocumentFile,
+  MaterialEstimate,
+  MaterialConsumption,
+  MaterialRequest,
 } from '@/lib/types';
 import { EXPENSE_CATEGORIES as CATALOG_EXPENSE_CATEGORIES } from '@/lib/catalog';
 import { hasCapability, type Capability } from '@/lib/access';
@@ -107,6 +110,46 @@ type Store = AppState & {
   addClientPayment: (
     p: Omit<ClientPayment, 'id' | 'createdAt' | 'projectId'> & { projectId?: string },
   ) => Promise<void>;
+  createMaterialEstimate: (data: {
+    projectId: string;
+    unitId?: string;
+    workType: string;
+    measurements: {
+      length: number;
+      height: number;
+      thickness?: number;
+      openingsArea?: number;
+      netArea?: number;
+    };
+    plannedOverrides?: Record<string, number>;
+    notes?: string;
+  }) => Promise<string>;
+  updateMaterialEstimate: (
+    id: string,
+    data: Record<string, unknown>,
+  ) => Promise<void>;
+  deleteMaterialEstimate: (id: string) => Promise<void>;
+  addMaterialConsumption: (data: {
+    projectId: string;
+    unitId?: string;
+    materialId: string;
+    estimateId?: string;
+    workDoneArea?: number;
+    progressPct?: number;
+    actualQty: number;
+    remarks?: string;
+    photoDataUrl?: string;
+    photoName?: string;
+    mediaIds?: string[];
+  }) => Promise<string>;
+  createMaterialRequest: (data: {
+    projectId: string;
+    unitId?: string;
+    materialId: string;
+    qtyRequested: number;
+    reason?: string;
+  }) => Promise<string>;
+  decideMaterialRequest: (id: string, status: 'approved' | 'rejected') => Promise<void>;
 };
 
 const empty: AppState = {
@@ -122,6 +165,12 @@ const empty: AppState = {
   purchases: [],
   attendance: [],
   clientPayments: [],
+  materialCatalog: [],
+  materialFormulas: [],
+  materialEstimates: [],
+  materialDeliveries: [],
+  materialConsumptions: [],
+  materialRequests: [],
   notifications: [],
   auditLog: [],
   reports: [],
@@ -468,6 +517,59 @@ export const useAppStore = create<Store>()((set, get) => ({
     set((s) => ({
       clientPayments: [res.payment, ...s.clientPayments],
       units: res.unit ? replaceUnit(s.units, res.unit) : s.units,
+    }));
+  },
+
+  createMaterialEstimate: async (data) => {
+    const res = await api.post<{ estimate: MaterialEstimate }>('/api/materials/estimates', data);
+    set((s) => ({ materialEstimates: [res.estimate, ...s.materialEstimates] }));
+    return res.estimate.id;
+  },
+
+  updateMaterialEstimate: async (id, data) => {
+    const res = await api.patch<{ estimate: MaterialEstimate }>(
+      `/api/materials/estimates/${id}`,
+      data,
+    );
+    set((s) => ({
+      materialEstimates: s.materialEstimates.map((e) =>
+        e.id === id ? res.estimate : e,
+      ),
+    }));
+  },
+
+  deleteMaterialEstimate: async (id) => {
+    await api.delete(`/api/materials/estimates/${id}`);
+    set((s) => ({
+      materialEstimates: s.materialEstimates.filter((e) => e.id !== id),
+    }));
+  },
+
+  addMaterialConsumption: async (data) => {
+    const res = await api.post<{ consumption: MaterialConsumption }>(
+      '/api/materials/consumptions',
+      data,
+    );
+    await get().bootstrap();
+    return res.consumption.id;
+  },
+
+  createMaterialRequest: async (data) => {
+    const res = await api.post<{ request: MaterialRequest }>('/api/materials/requests', data);
+    set((s) => ({ materialRequests: [res.request, ...s.materialRequests] }));
+    await get().bootstrap();
+    return res.request.id;
+  },
+
+  decideMaterialRequest: async (id, status) => {
+    const res = await api.patch<{ request: MaterialRequest }>(
+      `/api/materials/requests/${id}`,
+      { status },
+    );
+    set((s) => ({
+      materialRequests: s.materialRequests.map((r) =>
+        r.id === id ? res.request : r,
+      ),
     }));
   },
 }));

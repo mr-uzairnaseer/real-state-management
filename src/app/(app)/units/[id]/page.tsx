@@ -41,6 +41,13 @@ export default function UnitDetailPage() {
   const media = useAppStore((s) => s.media.filter((m) => m.unitId === id));
   const expenses = useAppStore((s) => s.expenses.filter((e) => e.unitId === id));
   const payments = useAppStore((s) => (s.clientPayments ?? []).filter((p) => p.unitId === id));
+  const materialEstimates = useAppStore((s) =>
+    (s.materialEstimates ?? []).filter((e) => e.unitId === id),
+  );
+  const materialConsumptions = useAppStore((s) =>
+    (s.materialConsumptions ?? []).filter((c) => c.unitId === id),
+  );
+  const materialCatalog = useAppStore((s) => s.materialCatalog ?? []);
   const addClientPayment = useAppStore((s) => s.addClientPayment);
   const updateUnit = useAppStore((s) => s.updateUnit);
   const setUnitStatus = useAppStore((s) => s.setUnitStatus);
@@ -209,6 +216,63 @@ export default function UnitDetailPage() {
             )}
           </div>
         </Card>
+
+        {can('view_material_stock') && (
+          <Card title="Materials">
+            {materialEstimates.length === 0 && materialConsumptions.length === 0 && (
+              <p style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>
+                No estimates for this unit.{' '}
+                <Link href="/materials" style={{ color: 'var(--accent-blue)' }}>
+                  Open Materials
+                </Link>
+              </p>
+            )}
+            {materialEstimates.map((est) => (
+              <div key={est.id} style={{ marginBottom: 12, fontSize: 13 }}>
+                <strong>{est.workType.replace('_', ' ')}</strong>
+                <div style={{ color: 'var(--text-tertiary)', fontSize: 11, marginBottom: 6 }}>
+                  Net {est.measurements?.netArea ?? '—'} sq.ft
+                </div>
+                {est.lines.map((line) => {
+                  const used = materialConsumptions
+                    .filter((c) => c.materialId === line.materialId && c.estimateId === est.id)
+                    .reduce((s, c) => s + c.actualQty, 0);
+                  const name =
+                    materialCatalog.find((m) => m.id === line.materialId)?.name ?? line.materialId;
+                  const variance =
+                    line.plannedQty > 0
+                      ? Math.round(((used - line.plannedQty) / line.plannedQty) * 1000) / 10
+                      : 0;
+                  return (
+                    <div
+                      key={line.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        padding: '4px 0',
+                        borderTop: '1px solid var(--border-color)',
+                      }}
+                    >
+                      <span>{name}</span>
+                      <span>
+                        {used} / {line.plannedQty}
+                        {Math.abs(variance) > 15 ? (
+                          <Badge tone="red">{variance}%</Badge>
+                        ) : null}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+            <Link href="/materials">
+              <Button size="sm" variant="secondary" style={{ marginTop: 8 }}>
+                Materials workspace
+              </Button>
+            </Link>
+          </Card>
+        )}
 
         {showMoney && unit.sale && (
           <Card title="Sale Record">

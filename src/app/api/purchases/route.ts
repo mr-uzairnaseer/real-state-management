@@ -103,6 +103,10 @@ export async function POST(req: NextRequest) {
       entityId: purchase.id,
       newValue: `${purchase.item} ${purchase.totalAmount}`,
     });
+
+    const { syncDeliveryFromPurchase } = await import('@/lib/materials-sync');
+    await syncDeliveryFromPurchase(purchase);
+
     return json({ purchase: mapPurchase(purchase) });
   } catch (err) {
     return handleApiError(err);

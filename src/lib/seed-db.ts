@@ -31,12 +31,21 @@ function stages() {
 export async function seedDatabase(client: PrismaClient, opts?: { force?: boolean }) {
   const existing = await client.user.count();
   if (existing && !opts?.force && process.env.FORCE_SEED !== '1') {
-    console.log('Database already has data — skipping seed.');
+    console.log('Database already has data — ensuring material catalog, skipping full seed.');
+    const { ensureMaterialCatalog } = await import('./ensure-materials');
+    await ensureMaterialCatalog(client);
     return;
   }
 
   console.log('Seeding database...');
 
+  await client.materialRequest.deleteMany();
+  await client.materialConsumption.deleteMany();
+  await client.materialDelivery.deleteMany();
+  await client.materialEstimateLine.deleteMany();
+  await client.materialEstimate.deleteMany();
+  await client.materialFormula.deleteMany();
+  await client.materialCatalog.deleteMany();
   await client.clientPayment.deleteMany();
   await client.attendance.deleteMany();
   await client.purchase.deleteMany();
@@ -52,6 +61,9 @@ export async function seedDatabase(client: PrismaClient, opts?: { force?: boolea
   await client.project.deleteMany();
   await client.user.deleteMany();
   await client.appMeta.deleteMany();
+
+  const { ensureMaterialCatalog } = await import('./ensure-materials');
+  await ensureMaterialCatalog(client);
 
   const adminHash = await bcrypt.hash('admin123', 10);
   const managerHash = await bcrypt.hash('manager123', 10);

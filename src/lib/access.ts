@@ -27,7 +27,11 @@ export type Capability =
   | 'view_financial_reports'
   | 'manage_users'
   | 'manage_settings'
-  | 'view_audit';
+  | 'view_audit'
+  | 'manage_material_plans'
+  | 'record_material_usage'
+  | 'request_materials'
+  | 'view_material_stock';
 
 export const ROLE_LABEL: Record<UserRole, string> = {
   admin: 'Project Owner',
@@ -69,6 +73,10 @@ const ADMIN_CAPS: Capability[] = [
   'manage_users',
   'manage_settings',
   'view_audit',
+  'manage_material_plans',
+  'record_material_usage',
+  'request_materials',
+  'view_material_stock',
 ];
 
 const MANAGER_CAPS: Capability[] = [
@@ -84,6 +92,9 @@ const MANAGER_CAPS: Capability[] = [
   'record_attendance',
   'submit_site_report',
   'view_site_reports',
+  'record_material_usage',
+  'request_materials',
+  'view_material_stock',
 ];
 
 const ACCOUNTANT_CAPS: Capability[] = [
@@ -124,6 +135,7 @@ export type NavIcon =
   | 'log'
   | 'attendance'
   | 'purchases'
+  | 'materials'
   | 'expenses'
   | 'sales'
   | 'rentals'
@@ -175,6 +187,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/gallery', label: 'Photos', icon: 'photos', roles: ['admin', 'manager'] },
       { href: '/attendance', label: 'Attendance', icon: 'attendance', roles: ['admin', 'manager'] },
       { href: '/purchases', label: 'Purchases', icon: 'purchases', roles: ['admin', 'manager'] },
+      { href: '/materials', label: 'Materials', icon: 'materials', roles: ['admin', 'manager'] },
     ],
   },
   {
@@ -252,6 +265,7 @@ export const SITE_REPORTS = [
   'attendance',
   'unit-completion',
   'purchases',
+  'material-variance',
 ] as const;
 
 export const FINANCE_REPORTS = [

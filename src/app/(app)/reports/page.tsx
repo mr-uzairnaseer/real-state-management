@@ -24,6 +24,9 @@ export default function ReportsPage() {
   const expenses = useAppStore((s) => s.expenses);
   const purchases = useAppStore((s) => s.purchases ?? []);
   const attendance = useAppStore((s) => s.attendance ?? []);
+  const materialConsumptions = useAppStore((s) => s.materialConsumptions ?? []);
+  const materialCatalog = useAppStore((s) => s.materialCatalog ?? []);
+  const materialEstimates = useAppStore((s) => s.materialEstimates ?? []);
   const updates = useAppStore((s) => s.updates);
   const reports = useAppStore((s) => s.reports);
   const selectedProjectId = useAppStore((s) => s.selectedProjectId);
@@ -178,6 +181,41 @@ export default function ReportsPage() {
     ]);
   };
 
+  const exportMaterialVariance = () => {
+    const scopedCons = materialConsumptions.filter((c) => scopedIds.has(c.projectId));
+    exportToExcel('material-variance-report', [
+      {
+        name: 'Usage',
+        rows: scopedCons.map((c) => ({
+          Date: c.createdAt.slice(0, 10),
+          Material: materialCatalog.find((m) => m.id === c.materialId)?.name ?? c.materialId,
+          Unit: units.find((u) => u.id === c.unitId)?.number ?? 'Project',
+          Actual: c.actualQty,
+          FormulaExpected: c.formulaExpectedQty,
+          VariancePct: c.variancePct,
+          Flagged: c.flagged ? 'yes' : 'no',
+          By: c.reportedByName,
+          Remarks: c.remarks,
+        })),
+      },
+      {
+        name: 'Estimates',
+        rows: materialEstimates
+          .filter((e) => scopedIds.has(e.projectId))
+          .flatMap((e) =>
+            e.lines.map((l) => ({
+              Unit: units.find((u) => u.id === e.unitId)?.number ?? 'Project',
+              WorkType: e.workType,
+              Material: materialCatalog.find((m) => m.id === l.materialId)?.name ?? l.materialId,
+              FormulaQty: l.formulaQty,
+              PlannedQty: l.plannedQty,
+              NetArea: e.measurements?.netArea ?? '',
+            })),
+          ),
+      },
+    ]);
+  };
+
   const exportUnitCompletion = () => {
     exportToPdf(
       'Unit Completion Report',
@@ -291,6 +329,9 @@ export default function ReportsPage() {
                 </Button>
                 <Button variant="secondary" onClick={exportPurchases}>
                   Purchases Excel
+                </Button>
+                <Button variant="secondary" onClick={exportMaterialVariance}>
+                  Material variance Excel
                 </Button>
               </>
             )}

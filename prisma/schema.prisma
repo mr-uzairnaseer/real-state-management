@@ -44,6 +44,11 @@ model Project {
   purchases       Purchase[]
   attendance      Attendance[]
   clientPayments  ClientPayment[]
+  materialEstimates MaterialEstimate[]
+  materialDeliveries MaterialDelivery[]
+  materialConsumptions MaterialConsumption[]
+  materialRequests MaterialRequest[]
+  materialFormulas MaterialFormula[]
 }
 
 model Unit {
@@ -72,6 +77,10 @@ model Unit {
   expenseRows          Expense[]
   purchases            Purchase[]
   clientPayments       ClientPayment[]
+  materialEstimates    MaterialEstimate[]
+  materialDeliveries   MaterialDelivery[]
+  materialConsumptions MaterialConsumption[]
+  materialRequests     MaterialRequest[]
 }
 
 model Plot {
@@ -261,4 +270,119 @@ model ManagerReport {
 model AppMeta {
   id                 String  @id @default("singleton")
   selectedProjectId  String?
+}
+
+model MaterialCatalog {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  unit      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  formulas  MaterialFormula[]
+  estimateLines MaterialEstimateLine[]
+  deliveries MaterialDelivery[]
+  consumptions MaterialConsumption[]
+  requests  MaterialRequest[]
+}
+
+model MaterialFormula {
+  id         String   @id @default(cuid())
+  /// null = global default; set for project overrides
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workType   String
+  materialId String
+  material   MaterialCatalog @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  /// qty per sq.ft of net work area
+  ratePerSqFt Float
+  notes      String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([projectId, workType])
+}
+
+model MaterialEstimate {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitId       String?
+  unit         Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  workType     String
+  /// { length, height, thickness?, openingsArea, netArea }
+  measurements Json
+  status       String   @default("active")
+  notes        String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lines        MaterialEstimateLine[]
+  consumptions MaterialConsumption[]
+}
+
+model MaterialEstimateLine {
+  id         String   @id @default(cuid())
+  estimateId String
+  estimate   MaterialEstimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  materialId String
+  material   MaterialCatalog @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  formulaQty Float
+  plannedQty Float
+}
+
+model MaterialDelivery {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitId     String?
+  unit       Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  materialId String
+  material   MaterialCatalog @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  quantity   Float
+  purchaseId String?  @unique
+  createdAt  DateTime @default(now())
+}
+
+model MaterialConsumption {
+  id                 String   @id @default(cuid())
+  projectId          String
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitId             String?
+  unit               Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  materialId         String
+  material           MaterialCatalog @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  estimateId         String?
+  estimate           MaterialEstimate? @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  workDoneArea       Float    @default(0)
+  progressPct        Float    @default(0)
+  actualQty          Float
+  formulaExpectedQty Float
+  variancePct        Float    @default(0)
+  flagged            Boolean  @default(false)
+  remarks            String   @default("")
+  mediaIds           String[] @default([])
+  reportedById       String
+  reportedByName     String
+  createdAt          DateTime @default(now())
+}
+
+model MaterialRequest {
+  id                 String   @id @default(cuid())
+  projectId          String
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitId             String?
+  unit               Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  materialId         String
+  material           MaterialCatalog @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  qtyRequested       Float
+  reason             String   @default("")
+  status             String   @default("pending")
+  stockAtRequest     Float    @default(0)
+  expectedRemaining  Float    @default(0)
+  warnHigh           Boolean  @default(false)
+  requestedById      String
+  requestedByName    String
+  decidedById        String?
+  decidedByName      String?
+  createdAt          DateTime @default(now())
+  decidedAt          DateTime?
 }

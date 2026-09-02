@@ -406,6 +406,102 @@ export interface ClientPayment {
   createdAt: string;
 }
 
+export type MaterialWorkType = 'brick_masonry' | 'plaster';
+
+export interface MaterialMeasurements {
+  length: number;
+  height: number;
+  thickness?: number;
+  openingsArea?: number;
+  netArea?: number;
+}
+
+export interface MaterialCatalogItem {
+  id: string;
+  code: string;
+  name: string;
+  unit: string;
+  active: boolean;
+}
+
+export interface MaterialFormula {
+  id: string;
+  projectId?: string;
+  workType: MaterialWorkType | string;
+  materialId: string;
+  ratePerSqFt: number;
+  notes: string;
+}
+
+export interface MaterialEstimateLine {
+  id: string;
+  estimateId: string;
+  materialId: string;
+  formulaQty: number;
+  plannedQty: number;
+}
+
+export interface MaterialEstimate {
+  id: string;
+  projectId: string;
+  unitId?: string;
+  workType: MaterialWorkType | string;
+  measurements: MaterialMeasurements;
+  status: 'draft' | 'active' | string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  lines: MaterialEstimateLine[];
+}
+
+export interface MaterialDelivery {
+  id: string;
+  projectId: string;
+  unitId?: string;
+  materialId: string;
+  quantity: number;
+  purchaseId?: string;
+  createdAt: string;
+}
+
+export interface MaterialConsumption {
+  id: string;
+  projectId: string;
+  unitId?: string;
+  materialId: string;
+  estimateId?: string;
+  workDoneArea: number;
+  progressPct: number;
+  actualQty: number;
+  formulaExpectedQty: number;
+  variancePct: number;
+  flagged: boolean;
+  remarks: string;
+  mediaIds: string[];
+  reportedById: string;
+  reportedByName: string;
+  createdAt: string;
+}
+
+export interface MaterialRequest {
+  id: string;
+  projectId: string;
+  unitId?: string;
+  materialId: string;
+  qtyRequested: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | string;
+  stockAtRequest: number;
+  expectedRemaining: number;
+  warnHigh: boolean;
+  requestedById: string;
+  requestedByName: string;
+  decidedById?: string;
+  decidedByName?: string;
+  createdAt: string;
+  decidedAt?: string;
+}
+
 export interface AppState {
   users: User[];
   currentUserId: string | null;
@@ -419,6 +515,12 @@ export interface AppState {
   purchases: Purchase[];
   attendance: AttendanceRecord[];
   clientPayments: ClientPayment[];
+  materialCatalog: MaterialCatalogItem[];
+  materialFormulas: MaterialFormula[];
+  materialEstimates: MaterialEstimate[];
+  materialDeliveries: MaterialDelivery[];
+  materialConsumptions: MaterialConsumption[];
+  materialRequests: MaterialRequest[];
   notifications: Notification[];
   auditLog: AuditEntry[];
   reports: ManagerReport[];
