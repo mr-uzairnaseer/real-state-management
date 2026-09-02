@@ -255,7 +255,7 @@ export default function ReportsPage() {
         .map((u) => [
           formatDate(u.createdAt),
           units.find((x) => x.id === u.unitId)?.number ?? '—',
-          u.note,
+          u.comment,
         ]),
       'daily-site',
     );
