@@ -39,6 +39,9 @@ next-env.d.ts
 # vercel
 .vercel
 
+# local deploy helpers (contain secrets — never commit)
+_deploy_*.py
+
 # uploads & env
 /uploads
 .env

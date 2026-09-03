@@ -48,14 +48,19 @@ export async function POST(req: NextRequest) {
 
     let updatedUnit = unit;
     if ((body.kind || 'sale') === 'sale' && unit.sale) {
-      const sale = unit.sale as SaleRecord;
+      const sale = unit.sale as unknown as SaleRecord;
       const amountReceived = (sale.amountReceived || 0) + payment.amount;
       const rem = remainingAmount(sale.salePrice, amountReceived);
       const paymentStatus = rem <= 0 ? 'paid' : amountReceived > 0 ? 'partial' : 'pending';
       updatedUnit = await prisma.unit.update({
         where: { id: unit.id },
         data: {
-          sale: { ...sale, amountReceived, remainingAmount: rem, paymentStatus },
+          sale: {
+            ...sale,
+            amountReceived,
+            remainingAmount: rem,
+            paymentStatus,
+          } as object,
         },
       });
     }
